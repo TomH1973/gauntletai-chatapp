@@ -1,0 +1,39 @@
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/auth';
+import { logger } from '@/lib/logger';
+
+export async function GET() {
+  try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
+
+    const users = await prisma.user.findMany({
+      where: {
+        isActive: true,
+        NOT: {
+          id: currentUser.id
+        }
+      },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        profileImage: true
+      },
+      orderBy: {
+        username: 'asc'
+      }
+    });
+
+    logger.debug('Users fetched successfully', { count: users.length });
+    return NextResponse.json(users);
+  } catch (error) {
+    logger.error('Error fetching users', error);
+    return new NextResponse('Internal Server Error', { status: 500 });
+  }
+} 
