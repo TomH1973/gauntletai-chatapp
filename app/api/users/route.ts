@@ -3,6 +3,14 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 
+/**
+ * @route GET /api/users
+ * @description Retrieves the current user's profile
+ * 
+ * @returns {Promise<NextResponse>} JSON response containing user profile data
+ * @throws {401} If user is not authenticated
+ * @throws {404} If user profile is not found
+ */
 export async function GET() {
   try {
     const currentUser = await getCurrentUser();

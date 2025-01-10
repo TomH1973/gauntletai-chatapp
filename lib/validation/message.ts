@@ -98,7 +98,57 @@ const RATE_LIMIT_WINDOW = 60000; // 1 minute
 const RATE_LIMIT_MAX_MESSAGES = 30;
 
 /**
- * Validate message content against moderation rules
+ * @dataflow Message Validation and Transformation
+ * 
+ * 1. Content Validation Flow
+ *    Input: Raw message content
+ *    Steps:
+ *    - Length validation (1 to MAX_MESSAGE_LENGTH)
+ *    - Content trimming
+ *    - Profanity filtering
+ *    - Script tag removal
+ *    - URL validation
+ * 
+ * 2. Thread Validation Flow
+ *    Input: Thread title
+ *    Steps:
+ *    - Length validation
+ *    - Content trimming
+ *    - Special character handling
+ * 
+ * 3. Attachment Validation Flow
+ *    Input: File metadata
+ *    Steps:
+ *    - Type validation
+ *    - Size limits by type
+ *    - MIME type checking
+ *    - URL format validation
+ * 
+ * 4. Rate Limiting Flow
+ *    Input: User ID and timestamp
+ *    Steps:
+ *    - Window calculation
+ *    - Message count tracking
+ *    - Limit enforcement
+ * 
+ * 5. Content Moderation Flow
+ *    Input: Message content
+ *    Steps:
+ *    - Pattern matching
+ *    - Link validation
+ *    - Content sanitization
+ *    - Error aggregation
+ */
+
+/**
+ * @function moderateContent
+ * @description Validates and moderates message content against defined rules
+ * 
+ * Data Transformations:
+ * 1. Pattern matching: Apply regex patterns for content validation
+ * 2. URL validation: Check and validate embedded URLs
+ * 3. Content filtering: Remove or flag inappropriate content
+ * 4. Error collection: Aggregate validation failures
  */
 export async function moderateContent(content: string): Promise<{ isValid: boolean; reason?: string }> {
   // Check basic moderation rules

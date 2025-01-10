@@ -1,4 +1,11 @@
-import { SocketState } from '@/types/chat';
+export interface SocketState {
+    setTyping(userId: string, threadId: string): Promise<void>;
+    clearTyping(userId: string, threadId: string): Promise<void>;
+    getTypingUsers(threadId: string): string[];
+    isUserOnline(userId: string): Promise<boolean>;
+    addUserSocket(userId: string, socketId: string): Promise<void>;
+    removeUserSocket(userId: string, socketId: string): Promise<boolean>;
+}
 
 /**
  * In-memory implementation of socket state management.

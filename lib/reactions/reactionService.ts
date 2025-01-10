@@ -1,8 +1,27 @@
 import { prisma } from '../prisma';
 import { ResourceIsolation } from '../auth/resourceIsolation';
 
+/**
+ * @class ReactionService
+ * @description Service class for managing message reactions with access control
+ * 
+ * Features:
+ * - Add/remove reactions
+ * - Access control validation
+ * - Reaction aggregation
+ * - User reaction tracking
+ */
 export class ReactionService {
-  // Add a reaction to a message
+  /**
+   * @method addReaction
+   * @description Adds a reaction to a message with access control
+   * 
+   * @param {string} messageId - ID of the message to react to
+   * @param {string} userId - ID of the user adding the reaction
+   * @param {string} emoji - Emoji to add as reaction
+   * @returns {Promise<void>}
+   * @throws {Error} If message not found or user lacks access
+   */
   static async addReaction(
     messageId: string,
     userId: string,
@@ -37,7 +56,16 @@ export class ReactionService {
     });
   }
 
-  // Remove a reaction from a message
+  /**
+   * @method removeReaction
+   * @description Removes a reaction from a message
+   * 
+   * @param {string} messageId - ID of the message to remove reaction from
+   * @param {string} userId - ID of the user removing the reaction
+   * @param {string} emoji - Emoji to remove
+   * @returns {Promise<void>}
+   * @throws {Error} If reaction not found
+   */
   static async removeReaction(
     messageId: string,
     userId: string,
@@ -54,7 +82,14 @@ export class ReactionService {
     });
   }
 
-  // Get all reactions for a message
+  /**
+   * @method getMessageReactions
+   * @description Gets all reactions for a message with user details
+   * 
+   * @param {string} messageId - ID of the message to get reactions for
+   * @returns {Promise<Array<{emoji: string; count: number; users: Array<{id: string; name: string | null}>}>>}
+   * @throws {Error} If operation fails
+   */
   static async getMessageReactions(messageId: string): Promise<{
     emoji: string;
     count: number;
@@ -99,7 +134,21 @@ export class ReactionService {
     return reactionDetails;
   }
 
-  // Get reactions summary for multiple messages
+  /**
+   * @algorithm Reaction Aggregation
+   * 1. Group Reactions
+   *    - Group by emoji
+   *    - Count occurrences
+   *    - Sort by popularity
+   * 
+   * 2. User Details
+   *    - Find reacting users
+   *    - Get user metadata
+   * 
+   * 3. Response Format
+   *    - Combine counts and users
+   *    - Format for client
+   */
   static async getReactionsSummary(messageIds: string[]): Promise<{
     [messageId: string]: { emoji: string; count: number }[];
   }> {

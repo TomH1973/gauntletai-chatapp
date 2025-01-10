@@ -4,9 +4,12 @@ import { prisma } from '@/lib/prisma';
 import { validateMessage } from "@/lib/validation/message";
 import { MessageStatus } from "@/types/chat";
 import { Prisma } from "@prisma/client";
-import { emitToThread } from '@/lib/socket';
+import { socket } from '@/lib/socket';
 
-// Define the user select type
+/**
+ * @type {Prisma.UserSelect}
+ * @description Type for selecting user fields from the database
+ */
 const userSelect = {
   id: true,
   email: true,
@@ -16,6 +19,29 @@ const userSelect = {
   updatedAt: true
 } satisfies Prisma.UserSelect;
 
+/**
+ * @function emitToThread
+ * @description Emits a socket event to all users in a thread
+ */
+const emitToThread = (threadId: string, event: string, data: any) => {
+  socket.to(`thread:${threadId}`).emit(event, data);
+};
+
+/**
+ * @route GET /api/messages
+ * @description Retrieves messages for a thread with pagination support
+ * 
+ * @param {Object} request - Next.js request object
+ * @param {URLSearchParams} request.searchParams - Query parameters
+ * @param {string} request.searchParams.threadId - ID of the thread to fetch messages from
+ * @param {string} [request.searchParams.before] - Timestamp to fetch messages before
+ * @param {number} [request.searchParams.limit=50] - Maximum number of messages to return
+ * 
+ * @returns {Promise<NextResponse>} JSON response containing messages or error
+ * @throws {401} If user is not authenticated
+ * @throws {403} If user doesn't have access to the thread
+ * @throws {404} If thread is not found
+ */
 export async function GET(request: Request) {
   try {
     const { userId } = await auth();
@@ -90,22 +116,36 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(req: Request) {
+/**
+ * @route POST /api/messages
+ * @description Creates a new message in a thread
+ * 
+ * @param {Object} request - Next.js request object
+ * @param {Object} request.body - Request body
+ * @param {string} request.body.content - Message content
+ * @param {string} request.body.threadId - ID of the thread to post message to
+ * @param {string} [request.body.parentId] - Optional ID of parent message for replies
+ * @param {File[]} [request.body.attachments] - Optional array of file attachments
+ * 
+ * @returns {Promise<NextResponse>} JSON response containing the created message
+ * @throws {401} If user is not authenticated
+ * @throws {403} If user doesn't have access to the thread
+ * @throws {400} If message validation fails
+ */
+export async function POST(request: Request) {
   try {
-    const { userId } = auth();
+    const { userId } = await auth();
     if (!userId) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    const { content, threadId, parentId } = await req.json();
+    const { content, threadId, parentId } = await request.json();
 
     // Validate thread access
-    const participant = await prisma.threadParticipant.findUnique({
+    const participant = await prisma.threadParticipant.findFirst({
       where: {
-        threadId_userId: {
-          threadId,
-          userId
-        }
+        threadId,
+        userId
       }
     });
 
@@ -131,7 +171,7 @@ export async function POST(req: Request) {
         threadId,
         userId,
         parentId,
-        status: 'SENT'
+        status: MessageStatus.SENT
       },
       include: {
         user: {

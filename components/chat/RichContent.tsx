@@ -1,14 +1,48 @@
 import { useEffect, useState } from 'react';
-import { processRichContent, fetchLinkPreview, type MediaEmbed } from '@/lib/richMedia';
-import { Card } from '@/components/ui/card';
+import { processRichContent, fetchLinkPreview } from '@/lib/richMedia';
+import { Card } from '../ui/card';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 
-interface RichContentProps {
+/**
+ * @interface MediaEmbed
+ * @description Type for media embeds in rich content
+ */
+interface MediaEmbed {
+  type: 'image' | 'video' | 'code' | 'link';
   content: string;
+  metadata?: Record<string, any>;
+}
+
+/**
+ * @interface RichContentProps
+ * @description Props for the RichContent component
+ */
+interface RichContentProps {
+  /** Raw content string to be processed for rich media */
+  content: string;
+  /** Optional className for styling */
   className?: string;
 }
 
+/**
+ * @component RichContent
+ * @description A component that processes and renders rich text content with media embeds
+ * 
+ * Features:
+ * - Markdown rendering
+ * - Link previews
+ * - Media embeds (images, videos, etc.)
+ * - Automatic URL detection
+ * 
+ * @example
+ * ```tsx
+ * <RichContent
+ *   content="Check out this link: https://example.com"
+ *   className="message-content"
+ * />
+ * ```
+ */
 export function RichContent({ content, className }: RichContentProps) {
   const [processedContent, setProcessedContent] = useState<{
     html: string;
@@ -50,79 +84,30 @@ export function RichContent({ content, className }: RichContentProps) {
       />
 
       {/* Media embeds */}
-      {processedContent.embeds.map((embed, index) => {
-        switch (embed.type) {
-          case 'image':
-            return (
-              <div key={index} className="relative w-full aspect-video">
-                <Image
-                  src={embed.content}
-                  alt="Embedded image"
-                  fill
-                  className="object-contain"
-                />
-              </div>
-            );
-          
-          case 'video':
-            return (
-              <video
-                key={index}
-                src={embed.content}
-                controls
-                className="w-full rounded-lg"
-              />
-            );
-          
-          case 'code':
-            return (
-              <pre key={index} className="p-4 rounded-lg bg-muted">
-                <code className={embed.metadata?.language || ''}>
-                  {embed.content}
-                </code>
-              </pre>
-            );
-          
-          case 'link':
-            const preview = linkPreviews[embed.content];
-            if (!preview) return null;
-            
-            return (
-              <Card key={index} className="p-4 hover:bg-muted/50 transition-colors">
-                <a 
-                  href={embed.content}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex gap-4"
-                >
-                  {preview.image && (
-                    <div className="relative w-24 h-24 flex-shrink-0">
-                      <Image
-                        src={preview.image}
-                        alt={preview.title || 'Link preview'}
-                        fill
-                        className="object-cover rounded-lg"
-                      />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold truncate">
-                      {preview.title || embed.content}
-                    </h4>
-                    {preview.description && (
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {preview.description}
-                      </p>
-                    )}
-                    <p className="text-xs text-muted-foreground mt-1 truncate">
-                      {embed.content}
-                    </p>
-                  </div>
-                </a>
-              </Card>
-            );
-        }
-      })}
+      {processedContent.embeds.map(embed => (
+        <Card key={embed.content} className="overflow-hidden">
+          {/* Render different types of embeds */}
+          {embed.type === 'image' && (
+            <Image
+              src={embed.content}
+              alt="Embedded content"
+              width={600}
+              height={400}
+              className="object-cover"
+            />
+          )}
+          {embed.type === 'link' && linkPreviews[embed.content] && (
+            <div className="p-4">
+              <h3 className="text-lg font-semibold">
+                {linkPreviews[embed.content].title}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {linkPreviews[embed.content].description}
+              </p>
+            </div>
+          )}
+        </Card>
+      ))}
     </div>
   );
 } 

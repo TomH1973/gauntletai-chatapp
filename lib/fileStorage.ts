@@ -18,15 +18,36 @@ const ALLOWED_MIME_TYPES = {
     'text/plain', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
 };
 
+/**
+ * @interface FileUploadResult
+ * @description Result of a file upload operation
+ */
 export interface FileUploadResult {
+  /** Unique identifier for the file */
   id: string;
+  /** Original filename */
   name: string;
+  /** Type of file */
   type: 'image' | 'video' | 'audio' | 'document';
+  /** File size in bytes */
   size: number;
+  /** MIME type of the file */
   mimeType: string;
+  /** Public URL to access the file */
   url: string;
 }
 
+/**
+ * @class LocalFileStorage
+ * @description Service class for managing file uploads with local storage
+ * 
+ * Features:
+ * - File type validation
+ * - Image optimization
+ * - User-specific storage
+ * - Orphaned file cleanup
+ * - Secure file access
+ */
 export class LocalFileStorage {
   private validateFileType(mimeType: string): boolean {
     return Object.values(ALLOWED_MIME_TYPES).some(types => types.includes(mimeType));
@@ -39,6 +60,21 @@ export class LocalFileStorage {
       : 'document';
   }
 
+  /**
+   * @algorithm Image Optimization
+   * 1. Format Check
+   *    - Verify image MIME type
+   *    - Skip if not image
+   * 
+   * 2. Processing
+   *    - Resize to max dimensions
+   *    - Preserve aspect ratio
+   *    - Apply compression
+   * 
+   * 3. Error Handling
+   *    - Catch processing errors
+   *    - Fallback to original
+   */
   private async compressImage(buffer: Buffer, mimeType: string): Promise<Buffer> {
     if (!mimeType.startsWith('image/')) return buffer;
 
@@ -55,6 +91,17 @@ export class LocalFileStorage {
     }
   }
 
+  /**
+   * @method saveFile
+   * @description Saves a file to local storage with validation
+   * 
+   * @param {Buffer} buffer - File data
+   * @param {string} filename - Original filename
+   * @param {string} mimeType - MIME type of file
+   * @param {string} userId - ID of user uploading file
+   * @returns {Promise<FileUploadResult>} Upload result
+   * @throws {Error} If file type not allowed or save fails
+   */
   async saveFile(
     file: Buffer,
     fileName: string,
@@ -95,6 +142,15 @@ export class LocalFileStorage {
     };
   }
 
+  /**
+   * @method deleteFile
+   * @description Deletes a file from storage
+   * 
+   * @param {string} userId - ID of user who owns the file
+   * @param {string} fileId - ID of file to delete
+   * @returns {Promise<void>}
+   * @throws {Error} If file not found or delete fails
+   */
   async deleteFile(userId: string, fileId: string): Promise<void> {
     const userDir = path.join(UPLOAD_DIR, userId);
     const files = await fs.promises.readdir(userDir);
@@ -105,6 +161,21 @@ export class LocalFileStorage {
     }
   }
 
+  /**
+   * @algorithm Orphaned File Cleanup
+   * 1. Directory Scan
+   *    - List all user directories
+   *    - Filter for valid directories
+   * 
+   * 2. File Validation
+   *    - Extract file IDs
+   *    - Query database references
+   * 
+   * 3. Cleanup
+   *    - Delete unreferenced files
+   *    - Log deletions
+   *    - Maintain audit trail
+   */
   async cleanupOrphanedFiles(): Promise<void> {
     const { prisma } = await import('@/lib/prisma');
     

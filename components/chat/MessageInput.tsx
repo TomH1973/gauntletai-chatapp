@@ -5,13 +5,41 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Send } from 'lucide-react';
 
+/**
+ * @interface MessageInputProps
+ * @description Props for the MessageInput component
+ */
 interface MessageInputProps {
+  /** Callback function to handle message sending */
   onSendMessage: (content: string) => void;
+  /** Callback function triggered when user starts typing */
   onStartTyping: () => void;
+  /** Callback function triggered when user stops typing */
   onStopTyping: () => void;
+  /** Whether the input is disabled */
   disabled?: boolean;
 }
 
+/**
+ * @component MessageInput
+ * @description A text input component for composing and sending messages with typing indicators
+ * 
+ * Features:
+ * - Real-time typing indicators
+ * - Auto-focus after sending
+ * - Enter to send (Shift+Enter for new line)
+ * - Disabled state handling
+ * 
+ * @example
+ * ```tsx
+ * <MessageInput
+ *   onSendMessage={handleSend}
+ *   onStartTyping={handleStartTyping}
+ *   onStopTyping={handleStopTyping}
+ *   disabled={false}
+ * />
+ * ```
+ */
 export function MessageInput({
   onSendMessage,
   onStartTyping,

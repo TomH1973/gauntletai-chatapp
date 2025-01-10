@@ -2,6 +2,17 @@ import { useState, useCallback } from 'react';
 import { Message, MessageStatus } from '@/types/chat';
 import { nanoid } from 'nanoid';
 
+/**
+ * @interface OptimisticMessage
+ * @description Extended Message type for optimistic updates with temporary state
+ * 
+ * @extends {Omit<Message, 'id'>}
+ * @property {string} id - Temporary or permanent message ID
+ * @property {string} tempId - Temporary ID for tracking optimistic updates
+ * @property {boolean} isOptimistic - Flag indicating if this is an optimistic message
+ * @property {boolean} [retrying] - Optional flag indicating if message send is being retried
+ * @property {string} [error] - Optional error message if send failed
+ */
 interface OptimisticMessage extends Omit<Message, 'id'> {
   id: string;
   tempId: string;
@@ -10,6 +21,36 @@ interface OptimisticMessage extends Omit<Message, 'id'> {
   error?: string;
 }
 
+/**
+ * @hook useOptimisticMessages
+ * @description Custom hook for managing optimistic message updates in chat
+ * 
+ * Features:
+ * - Optimistic message creation
+ * - Temporary message state tracking
+ * - Error handling and retry support
+ * - Real-time message state updates
+ * 
+ * @param {Message[]} initialMessages - Initial array of messages
+ * 
+ * @returns {Object} Message state and control functions
+ * @property {(Message | OptimisticMessage)[]} messages - Current messages including optimistic ones
+ * @property {(content: string, userId: string, threadId: string) => string} addOptimisticMessage - Add a new optimistic message
+ * @property {(tempId: string, message: Message) => void} updateOptimisticMessage - Update an optimistic message with real data
+ * @property {(tempId: string, error: string) => void} markMessageError - Mark an optimistic message as failed
+ * 
+ * @example
+ * ```tsx
+ * const { messages, addOptimisticMessage, updateOptimisticMessage } = useOptimisticMessages(initialMessages);
+ * 
+ * // Add an optimistic message
+ * const tempId = addOptimisticMessage('Hello!', currentUserId, threadId);
+ * 
+ * // Update with real message after API call
+ * const response = await sendMessage('Hello!');
+ * updateOptimisticMessage(tempId, response.data);
+ * ```
+ */
 export function useOptimisticMessages(initialMessages: Message[] = []) {
   const [messages, setMessages] = useState<(Message | OptimisticMessage)[]>(initialMessages);
 

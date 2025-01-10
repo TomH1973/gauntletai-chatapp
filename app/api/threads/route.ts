@@ -3,6 +3,13 @@ import { prisma } from '@/lib/prisma.js';
 import { getCurrentUser } from '@/lib/auth.js';
 import { logger } from '@/lib/logger.js';
 
+/**
+ * @route GET /api/threads
+ * @description Retrieves all threads where the current user is a participant
+ * 
+ * @returns {Promise<NextResponse>} JSON response containing threads with participants and latest message
+ * @throws {401} If user is not authenticated
+ */
 export async function GET() {
   try {
     const user = await getCurrentUser();
@@ -52,6 +59,19 @@ export async function GET() {
   }
 }
 
+/**
+ * @route POST /api/threads
+ * @description Creates a new thread with specified participants
+ * 
+ * @param {Object} request - Next.js request object
+ * @param {Object} request.body - Request body
+ * @param {string} request.body.title - Thread title
+ * @param {string[]} request.body.participantIds - Array of user IDs to add as participants
+ * 
+ * @returns {Promise<NextResponse>} JSON response containing the created thread
+ * @throws {401} If user is not authenticated
+ * @throws {400} If one or more participants are not found
+ */
 export async function POST(request: Request) {
   try {
     const user = await getCurrentUser();

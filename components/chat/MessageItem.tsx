@@ -10,13 +10,43 @@ import { cn } from '@/lib/utils';
 import { MessageStatus } from './MessageStatus';
 import { RichContent } from '@/components/chat/RichContent';
 
+/**
+ * @interface MessageItemProps
+ * @description Props for the MessageItem component
+ */
 interface MessageItemProps {
+  /** The message to display */
   message: Message;
+  /** The currently logged in user */
   currentUser: User;
+  /** Whether to show the user's avatar */
   showAvatar?: boolean;
+  /** Whether to show message status indicators */
   showStatus?: boolean;
 }
 
+/**
+ * @component MessageItem
+ * @description A component that renders an individual message with editing and deletion capabilities
+ * 
+ * Features:
+ * - Message editing
+ * - Message deletion
+ * - Rich content rendering
+ * - Status indicators
+ * - Avatar display
+ * - Own/other message styling
+ * 
+ * @example
+ * ```tsx
+ * <MessageItem
+ *   message={messageData}
+ *   currentUser={userData}
+ *   showAvatar={true}
+ *   showStatus={true}
+ * />
+ * ```
+ */
 export function MessageItem({
   message,
   currentUser,

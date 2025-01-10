@@ -6,14 +6,46 @@ import { MessageComposer } from './MessageComposer';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 
+/**
+ * @interface ThreadedMessageProps
+ * @description Props for the ThreadedMessage component
+ */
 interface ThreadedMessageProps {
+  /** The message object to display */
   message: Message;
+  /** ID of the current user viewing the message */
   currentUserId: string;
+  /** Callback function to handle replies */
   onReply: (content: string, parentId: string) => void;
+  /** Current nesting depth of the message */
   depth?: number;
+  /** Maximum allowed nesting depth */
   maxDepth?: number;
 }
 
+/**
+ * @component ThreadedMessage
+ * @description A component that renders a message with threaded replies support
+ * 
+ * Features:
+ * - Nested reply threads
+ * - Collapsible replies
+ * - Reply composition
+ * - Depth limiting
+ * - Avatar display
+ * - Timestamp formatting
+ * 
+ * @example
+ * ```tsx
+ * <ThreadedMessage
+ *   message={messageData}
+ *   currentUserId="user123"
+ *   onReply={handleReply}
+ *   depth={0}
+ *   maxDepth={5}
+ * />
+ * ```
+ */
 export function ThreadedMessage({
   message,
   currentUserId,

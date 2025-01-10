@@ -15,6 +15,41 @@ interface ValidationResult<T> {
   error?: SocketError;
 }
 
+/**
+ * @dataflow Socket Event Validation and Transformation
+ * 
+ * 1. Message Edit Flow
+ *    Input: Partial message edit data
+ *    Steps:
+ *    - Required field validation
+ *    - Content trimming
+ *    - Permission verification
+ *    - Error formatting
+ * 
+ * 2. Message Reaction Flow
+ *    Input: Partial reaction data
+ *    Steps:
+ *    - Required field validation
+ *    - Emoji validation
+ *    - User verification
+ *    - Error formatting
+ * 
+ * 3. Error Response Flow
+ *    Input: Validation error
+ *    Steps:
+ *    - Error code mapping
+ *    - Message formatting
+ *    - Response structure
+ * 
+ * 4. Data Validation Flow
+ *    Input: Socket event payload
+ *    Steps:
+ *    - Type checking
+ *    - Required fields
+ *    - Data sanitization
+ *    - Response formatting
+ */
+
 // Message Validation
 export function validateNewMessage(data: Partial<Message>): ValidationResult<Message> {
   if (!data.content?.trim()) {
@@ -85,7 +120,16 @@ export function validateThreadUpdate(data: Partial<Thread>): ValidationResult<Th
   return { isValid: true, data: data as Thread };
 }
 
-// Message Edit Validation
+/**
+ * @function validateMessageEdit
+ * @description Validates and transforms message edit data
+ * 
+ * Data Transformations:
+ * 1. Field validation: Check required fields
+ * 2. Content sanitization: Trim and validate content
+ * 3. Error formatting: Map validation errors to response format
+ * 4. Type transformation: Convert partial to complete type
+ */
 export function validateMessageEdit(data: Partial<MessageEdit>): ValidationResult<MessageEdit> {
   if (!data.messageId) {
     return {

@@ -4,8 +4,27 @@ import { validateCreateMessage, validateUpdateMessage, sanitizeMessageContent } 
 import type { Message, Thread, User } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 
+/**
+ * @class DatabaseService
+ * @description Service class for handling database operations with error handling and validation
+ * 
+ * Features:
+ * - Message CRUD operations
+ * - Thread management
+ * - User operations
+ * - Transaction support
+ * - Batch operations
+ * - Data cleanup
+ */
 export class DatabaseService {
-  // Message operations
+  /**
+   * @method createMessage
+   * @description Creates a new message with content validation and sanitization
+   * 
+   * @param {Prisma.MessageCreateInput} data - Message creation data
+   * @returns {Promise<Message>} Created message
+   * @throws {Error} If message creation fails or validation fails
+   */
   async createMessage(data: Prisma.MessageCreateInput): Promise<Message> {
     return safeDbOperation(async () => {
       // Validate and sanitize the message content
@@ -24,6 +43,16 @@ export class DatabaseService {
     }, 'Failed to create message');
   }
 
+  /**
+   * @method updateMessage
+   * @description Updates a message with permission checks and edit history
+   * 
+   * @param {string} id - Message ID
+   * @param {Prisma.MessageUpdateInput} data - Update data
+   * @param {string} userId - ID of user making the update
+   * @returns {Promise<Message>} Updated message
+   * @throws {Error} If message not found, user not authorized, or update fails
+   */
   async updateMessage(
     id: string,
     data: Prisma.MessageUpdateInput,
@@ -73,7 +102,14 @@ export class DatabaseService {
     });
   }
 
-  // Thread operations
+  /**
+   * @method createThread
+   * @description Creates a new thread
+   * 
+   * @param {Prisma.ThreadCreateInput} data - Thread creation data
+   * @returns {Promise<Thread>} Created thread
+   * @throws {Error} If thread creation fails
+   */
   async createThread(data: Prisma.ThreadCreateInput): Promise<Thread> {
     return safeDbOperation(
       () => prisma.thread.create({ data }),
@@ -81,6 +117,16 @@ export class DatabaseService {
     );
   }
 
+  /**
+   * @method addThreadParticipant
+   * @description Adds a participant to a thread with role
+   * 
+   * @param {string} threadId - Thread ID
+   * @param {string} userId - User ID to add
+   * @param {Prisma.ParticipantRole} role - Role to assign
+   * @returns {Promise<ThreadParticipant>} Created/updated participant
+   * @throws {Error} If participant already exists or operation fails
+   */
   async addThreadParticipant(
     threadId: string,
     userId: string,
@@ -110,7 +156,15 @@ export class DatabaseService {
     }, 'Failed to add thread participant');
   }
 
-  // User operations
+  /**
+   * @method findUser
+   * @description Finds a user by unique criteria
+   * 
+   * @param {Prisma.UserWhereUniqueInput} where - Search criteria
+   * @param {Prisma.UserSelect} [select] - Fields to select
+   * @returns {Promise<User | null>} Found user or null
+   * @throws {Error} If operation fails
+   */
   async findUser(
     where: Prisma.UserWhereUniqueInput,
     select?: Prisma.UserSelect
@@ -121,7 +175,14 @@ export class DatabaseService {
     );
   }
 
-  // Transaction wrapper
+  /**
+   * @method transaction
+   * @description Executes operations in a transaction
+   * 
+   * @param {(tx: Prisma.TransactionClient) => Promise<T>} operation - Transaction operation
+   * @returns {Promise<T>} Transaction result
+   * @throws {Error} If transaction fails
+   */
   async transaction<T>(
     operation: (tx: Prisma.TransactionClient) => Promise<T>
   ): Promise<T> {
@@ -131,7 +192,14 @@ export class DatabaseService {
     );
   }
 
-  // Batch operations
+  /**
+   * @method batchUpdateMessages
+   * @description Updates multiple messages in a transaction
+   * 
+   * @param {Array<{id: string; data: Prisma.MessageUpdateInput}>} updates - Updates to apply
+   * @returns {Promise<Message[]>} Updated messages
+   * @throws {Error} If any update fails
+   */
   async batchUpdateMessages(
     updates: Array<{ id: string; data: Prisma.MessageUpdateInput }>
   ): Promise<Message[]> {
@@ -145,7 +213,13 @@ export class DatabaseService {
     });
   }
 
-  // Cleanup operations
+  /**
+   * @method cleanupStaleData
+   * @description Cleans up expired sessions and archives old messages
+   * 
+   * @returns {Promise<void>}
+   * @throws {Error} If cleanup fails
+   */
   async cleanupStaleData(): Promise<void> {
     return safeDbOperation(async () => {
       const oneMonthAgo = new Date();

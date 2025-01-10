@@ -16,6 +16,30 @@ export interface UserPreferences {
   timezone: string;
 }
 
+/**
+ * @hook usePreferences
+ * @description Custom hook for managing user preferences with persistence
+ * 
+ * Features:
+ * - Automatic preference loading
+ * - Preference updates with API sync
+ * - Loading and error state management
+ * - Type-safe preference handling
+ * 
+ * @returns {Object} Preferences state and utilities
+ * @property {UserPreferences | null} preferences - Current preferences
+ * @property {boolean} isLoading - Whether preferences are loading
+ * @property {string | null} error - Any error that occurred
+ * @property {(updates: Partial<UserPreferences>) => Promise<void>} updatePreferences - Function to update preferences
+ * 
+ * @example
+ * ```tsx
+ * const { preferences, isLoading, error, updatePreferences } = usePreferences();
+ * 
+ * // Update a preference
+ * await updatePreferences({ theme: 'dark' });
+ * ```
+ */
 export function usePreferences() {
   const { user } = useAuth();
   const [preferences, setPreferences] = useState<UserPreferences | null>(null);

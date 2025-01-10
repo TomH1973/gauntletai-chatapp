@@ -4,6 +4,30 @@ import { useEffect, useState } from 'react';
 import { useClerk, useUser, useSession } from '@clerk/nextjs';
 import type { User } from '@/types';
 
+/**
+ * @hook useAuth
+ * @description Custom hook for managing authentication state and user data
+ * 
+ * Features:
+ * - Clerk authentication integration
+ * - Local user data synchronization
+ * - Token management
+ * - Loading state handling
+ * 
+ * @returns {Object} Authentication state and utilities
+ * @property {User | null} user - Current user data
+ * @property {boolean} isLoaded - Whether auth state has loaded
+ * @property {boolean} isSignedIn - Whether user is signed in
+ * @property {() => Promise<string>} getToken - Function to get auth token
+ * 
+ * @example
+ * ```tsx
+ * const { user, isLoaded, isSignedIn, getToken } = useAuth();
+ * 
+ * if (!isLoaded) return <Loading />;
+ * if (!isSignedIn) return <SignIn />;
+ * ```
+ */
 export function useAuth() {
   const { user: clerkUser, isSignedIn, isLoaded } = useUser();
   const { session } = useSession();

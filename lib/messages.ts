@@ -30,6 +30,47 @@ type MessageWithIncludes = Prisma.MessageGetPayload<{
   include: typeof messageInclude;
 }>;
 
+/**
+ * @dataflow Message Transformations
+ * 
+ * 1. Message Creation Flow
+ *    Input: Raw message data from client
+ *    Steps:
+ *    - Validate content and structure
+ *    - Sanitize message content
+ *    - Transform to database model
+ *    - Create message record
+ *    - Update thread timestamp
+ *    - Transform to response model
+ * 
+ * 2. Message Response Flow
+ *    Input: Database message record
+ *    Steps:
+ *    - Parse dates to Date objects
+ *    - Transform user data
+ *    - Handle optional fields
+ *    - Process message metadata
+ *    - Transform attachments
+ *    - Transform mentions
+ * 
+ * 3. User Data Flow
+ *    Input: Database user record
+ *    Steps:
+ *    - Format username from parts
+ *    - Handle missing fields
+ *    - Transform timestamps
+ *    - Process user metadata
+ * 
+ * 4. Thread Data Flow
+ *    Input: Database thread record
+ *    Steps:
+ *    - Transform timestamps
+ *    - Process participants
+ *    - Transform messages
+ *    - Handle thread metadata
+ *    - Calculate unread count
+ */
+
 export async function createMessage(data: {
   content: string;
   threadId: string;
@@ -67,6 +108,17 @@ export async function getThreadMessages(threadId: string): Promise<Message[]> {
   return messages.map(transformMessage);
 }
 
+/**
+ * @function transformMessage
+ * @description Transforms a database message record into the API response format
+ * 
+ * Data Transformations:
+ * 1. Date parsing: createdAt, updatedAt -> Date objects
+ * 2. Optional fields: parentId, error -> undefined if not present
+ * 3. Default values: status -> 'sent', mentions/attachments -> []
+ * 4. Nested transformations: user, parent, replies
+ * 5. Metadata handling: Preserve custom fields
+ */
 export function transformMessage(message: any): Message {
   return {
     id: message.id,

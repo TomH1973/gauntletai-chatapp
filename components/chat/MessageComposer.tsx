@@ -12,15 +12,24 @@ const MAX_ATTACHMENTS = 10;
 const ALLOWED_FILE_TYPES = ['image/*', 'video/*', 'audio/*', '.pdf', '.doc', '.docx'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
+/**
+ * @interface MessageComposerProps
+ * @description Props for the MessageComposer component
+ */
 interface MessageComposerProps {
+  /** ID of the thread this message belongs to */
   threadId: string;
+  /** Callback function to handle message sending */
   onSendMessage: (content: string, attachments?: File[]) => Promise<void>;
+  /** Whether the composer is disabled */
   disabled?: boolean;
+  /** Message being replied to, if any */
   replyTo?: {
     id: string;
     content: string;
     author: string;
   } | null;
+  /** Callback to cancel reply mode */
   onCancelReply?: () => void;
 }
 
@@ -28,6 +37,19 @@ interface MessageError extends Error {
   code?: ErrorCode;
 }
 
+/**
+ * @component MessageComposer
+ * @description A rich text input component for composing messages with attachment support
+ * 
+ * @example
+ * ```tsx
+ * <MessageComposer
+ *   threadId="123"
+ *   onSendMessage={handleSend}
+ *   disabled={false}
+ * />
+ * ```
+ */
 export function MessageComposer({
   threadId,
   onSendMessage,
