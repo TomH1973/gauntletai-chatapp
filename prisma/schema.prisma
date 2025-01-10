@@ -48,6 +48,7 @@ model User {
   sessions       Session[]
   preferences    UserPreferences?
   attachments    Attachment[]
+  reactions      Reaction[]
 
   @@index([email])
   @@index([clerkId])
@@ -94,6 +95,7 @@ model Message {
   readBy        MessageRead[]
   editHistory   MessageEdit[]
   attachments   Attachment[]
+  reactions     Reaction[]
 
   @@index([threadId])
   @@index([userId])
@@ -194,4 +196,18 @@ model Attachment {
   @@index([messageId])
   @@index([uploaderId])
   @@index([fileType])
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  emoji     String   // Unicode emoji or custom emoji identifier
+  messageId String
+  userId    String
+  createdAt DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])  // One unique emoji reaction per user per message
+  @@index([messageId])
+  @@index([userId])
 } 
