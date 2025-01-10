@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
+
+const messageInclude = {
+  user: {
+    select: {
+      id: true,
+      name: true,
+      image: true
+    }
+  },
+  thread: {
+    select: {
+      id: true,
+      name: true
+    }
+  }
+} satisfies Prisma.MessageInclude;
 
 export async function GET(req: NextRequest) {
   try {
@@ -48,30 +65,8 @@ export async function GET(req: NextRequest) {
       prisma.message.findMany({
         where: whereConditions,
         include: {
-          user: {
-            select: {
-              id: true,
-              username: true,
-              profileImage: true
-            }
-          },
-          thread: {
-            select: {
-              id: true,
-              title: true
-            }
-          },
-          attachments: true,
-          reactions: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  username: true
-                }
-              }
-            }
-          }
+          user: true,
+          thread: true
         },
         orderBy: {
           createdAt: 'desc'

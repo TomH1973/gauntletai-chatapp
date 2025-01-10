@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { Message } from "@/types";
+import { Message } from "@/types/chat";
 import { differenceInMinutes } from "date-fns";
 
 /**

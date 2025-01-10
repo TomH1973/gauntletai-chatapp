@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { Message, User } from '@/types/chat';
+import { Message, User } from '@/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageItem } from './MessageItem';
 import { Spinner } from '@/components/ui/spinner';

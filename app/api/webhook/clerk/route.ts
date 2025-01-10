@@ -51,11 +51,10 @@ export async function POST(req: Request) {
     if (!primaryEmail) {
       return new Response('No email found', { status: 400 });
     }
-
     await prisma.user.upsert({
-      where: { clerkId: id },
+      where: { id: id },
       create: {
-        clerkId: id,
+        id: id,
         email: primaryEmail,
         username: username || primaryEmail.split('@')[0],
         firstName: first_name || null,

@@ -77,9 +77,9 @@ export async function POST(req: Request) {
 
     try {
       await prisma.user.upsert({
-        where: { clerkId: id },
+        where: { id: id },
         create: {
-          clerkId: id,
+          id: id,
           email: email || '',
           username: username || email?.split('@')[0] || id,
           firstName: first_name || null,
@@ -106,9 +106,8 @@ export async function POST(req: Request) {
 
   if (eventType === 'user.deleted') {
     try {
-      await prisma.user.update({
-        where: { clerkId: evt.data.id },
-        data: { isActive: false }
+      await prisma.user.delete({
+        where: { id: evt.data.id }
       });
 
       return NextResponse.json({ success: true });

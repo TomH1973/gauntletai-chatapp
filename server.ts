@@ -2,10 +2,11 @@ import { Server } from 'socket.io';
 import { createServer } from 'http';
 import express from 'express';
 import { prisma } from './lib/prisma';
-import { MessageStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import type { ClientToServerEvents, ServerToClientEvents } from './types/chat';
 import { validateMessage } from '@/lib/validation/message';
 import { SocketErrorCode, handleSocketError } from '@/lib/socketErrors';
+import { MessageStatus } from './types/message';
 
 const app = express();
 const httpServer = createServer(app);
@@ -15,6 +16,13 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer);
 const onlineUsers = new Map<string, Set<string>>();
 const typingUsers = new Map<string, Map<string, { username: string; timestamp: number }>>();
 const lastSeenTimes = new Map<string, Date>();
+
+const userSelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true
+} satisfies Prisma.UserSelect;
 
 io.on('connection', async (socket) => {
   const userId = socket.handshake.auth.userId;
@@ -32,13 +40,13 @@ io.on('connection', async (socket) => {
   // Broadcast user online status
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, name: true }
+    select: userSelect
   });
 
   if (user) {
     socket.broadcast.emit('presence:online', {
       userId: user.id,
-      name: user.name
+      name: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Anonymous'
     });
   }
 
