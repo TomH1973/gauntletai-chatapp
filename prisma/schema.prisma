@@ -23,19 +23,24 @@ enum ParticipantRole {
 
 model User {
   id             String           @id @default(cuid())
+  clerkId        String           @unique
   email          String           @unique
   name           String?
   image          String?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
+  lastLoginAt    DateTime?
+  isActive       Boolean          @default(true)
   messages       Message[]
   threads        ThreadParticipant[]
   readMessages   MessageRead[]
   messageEdits   MessageEdit[]
   notifications  Notification[]
   sessions       Session[]
+  preferences    UserPreferences?
 
   @@index([email])
+  @@index([clerkId])
 }
 
 model Session {
@@ -136,4 +141,24 @@ model MessageEdit {
 
   @@index([messageId])
   @@index([editedBy])
+}
+
+model UserPreferences {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme                String    @default("system")
+  shareProfile         Boolean   @default(true)
+  showOnlineStatus     Boolean   @default(true)
+  allowMessagePreviews Boolean   @default(true)
+  retainMessageHistory Boolean   @default(true)
+  notificationSound    Boolean   @default(true)
+  desktopNotifications Boolean   @default(true)
+  emailNotifications   Boolean   @default(true)
+  language            String    @default("en")
+  timezone            String    @default("UTC")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([userId])
 } 

@@ -19,18 +19,40 @@ export function useAuth() {
       return;
     }
 
-    // Transform Clerk user to our User type
-    setUser({
-      id: clerkUser.id,
-      username: clerkUser.username || '',
-      email: clerkUser.emailAddresses[0]?.emailAddress || '',
-      firstName: clerkUser.firstName || '',
-      lastName: clerkUser.lastName || '',
-      imageUrl: clerkUser.imageUrl || '',
-      createdAt: clerkUser.createdAt?.toISOString() || new Date().toISOString(),
-      updatedAt: clerkUser.updatedAt?.toISOString() || new Date().toISOString(),
-      lastLoginAt: clerkUser.lastSignInAt?.toISOString() || new Date().toISOString(),
-      isActive: true
+    // Fetch our local user data using Clerk ID
+    const fetchLocalUser = async () => {
+      try {
+        const response = await fetch('/api/users/me');
+        if (!response.ok) {
+          console.error('Failed to fetch local user data');
+          return null;
+        }
+        return await response.json();
+      } catch (error) {
+        console.error('Error fetching local user:', error);
+        return null;
+      }
+    };
+
+    fetchLocalUser().then((localUser) => {
+      if (localUser) {
+        setUser(localUser);
+      } else {
+        // Fallback to Clerk user data if local user not found
+        setUser({
+          id: localUser?.id,
+          clerkId: clerkUser.id,
+          email: clerkUser.emailAddresses[0]?.emailAddress || '',
+          name: clerkUser.firstName && clerkUser.lastName 
+            ? `${clerkUser.firstName} ${clerkUser.lastName}`
+            : clerkUser.firstName || clerkUser.lastName || '',
+          image: clerkUser.imageUrl || '',
+          createdAt: localUser?.createdAt || new Date().toISOString(),
+          updatedAt: localUser?.updatedAt || new Date().toISOString(),
+          lastLoginAt: localUser?.lastLoginAt || new Date().toISOString(),
+          isActive: true
+        });
+      }
     });
   }, [clerkUser, isSignedIn, isLoaded]);
 
@@ -38,6 +60,6 @@ export function useAuth() {
     user,
     isLoaded,
     isSignedIn,
-    getToken: () => getToken(),
+    getToken,
   };
 } 

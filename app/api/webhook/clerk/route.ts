@@ -47,7 +47,7 @@ export async function POST(req: Request) {
   const eventType = evt.type;
 
   if (eventType === 'user.created' || eventType === 'user.updated') {
-    const { id, email_addresses, first_name, last_name, image_url } = evt.data;
+    const { id, email_addresses, first_name, last_name, image_url, created_at, updated_at, last_sign_in_at } = evt.data;
     const primaryEmail = email_addresses?.[0]?.email_address;
 
     if (!primaryEmail) {
@@ -56,17 +56,23 @@ export async function POST(req: Request) {
 
     try {
       await prisma.user.upsert({
-        where: { id: id },
+        where: { clerkId: id },
         create: {
-          id: id,
+          clerkId: id,
           email: primaryEmail,
           name: first_name && last_name ? `${first_name} ${last_name}` : first_name || last_name || primaryEmail.split('@')[0],
           image: image_url || null,
+          lastLoginAt: last_sign_in_at ? new Date(last_sign_in_at) : null,
+          createdAt: created_at ? new Date(created_at) : new Date(),
+          updatedAt: updated_at ? new Date(updated_at) : new Date(),
+          isActive: true,
         },
         update: {
           email: primaryEmail,
           name: first_name && last_name ? `${first_name} ${last_name}` : undefined,
           image: image_url || null,
+          lastLoginAt: last_sign_in_at ? new Date(last_sign_in_at) : undefined,
+          updatedAt: updated_at ? new Date(updated_at) : new Date(),
         },
       });
 
@@ -80,7 +86,7 @@ export async function POST(req: Request) {
   if (eventType === 'user.deleted') {
     try {
       await prisma.user.delete({
-        where: { id: evt.data.id }
+        where: { clerkId: evt.data.id }
       });
 
       return NextResponse.json({ success: true, event: eventType });
