@@ -7,22 +7,35 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum MessageStatus {
+  SENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum ParticipantRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
 model User {
-  id            String         @id @default(cuid())
-  email         String         @unique
-  username      String         @unique
-  passwordHash  String
-  firstName     String?
-  lastName      String?
-  profileImage  String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  lastLoginAt   DateTime?
-  isActive      Boolean        @default(true)
-  sessions      Session[]
-  messages      Message[]
-  notifications Notification[]
-  threads       Thread[]       @relation("ThreadParticipants")
+  id             String           @id @default(cuid())
+  email          String           @unique
+  name           String?
+  image          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  messages       Message[]
+  threads        ThreadParticipant[]
+  readMessages   MessageRead[]
+  messageEdits   MessageEdit[]
+  notifications  Notification[]
+  sessions       Session[]
+
+  @@index([email])
 }
 
 model Session {
@@ -32,15 +45,20 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
 }
 
 model Thread {
-  id           String    @id @default(cuid())
-  title        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id           String             @id @default(cuid())
+  name         String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
   messages     Message[]
-  participants User[]    @relation("ThreadParticipants")
+  participants ThreadParticipant[]
+
+  @@index([updatedAt])
 }
 
 model Message {
@@ -48,22 +66,74 @@ model Message {
   content       String
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  status        MessageStatus  @default(SENDING)
+  isEdited      Boolean        @default(false)
   userId        String
-  user          User           @relation(fields: [userId], references: [id])
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   threadId      String
-  thread        Thread         @relation(fields: [threadId], references: [id])
+  thread        Thread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
   parentId      String?
   parent        Message?       @relation("Replies", fields: [parentId], references: [id])
   replies       Message[]      @relation("Replies")
   notifications Notification[]
+  readBy        MessageRead[]
+  editHistory   MessageEdit[]
+
+  @@index([threadId])
+  @@index([userId])
+  @@index([parentId])
+}
+
+model MessageRead {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  readAt    DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([userId])
 }
 
 model Notification {
   id        String   @id @default(cuid())
+  type      String
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
   messageId String
-  message   Message  @relation(fields: [messageId], references: [id])
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([messageId])
+}
+
+model ThreadParticipant {
+  id        String   @id @default(cuid())
+  userId    String
+  threadId  String
+  role      String   @default("MEMBER")
+  joinedAt  DateTime @default(now())
+  leftAt    DateTime?
+  user      User     @relation(fields: [userId], references: [id])
+  thread    Thread   @relation(fields: [threadId], references: [id])
+
+  @@unique([userId, threadId])
+  @@index([threadId])
+  @@index([userId])
+}
+
+model MessageEdit {
+  id        String   @id @default(cuid())
+  content   String
+  messageId String
+  editedBy  String
+  editedAt  DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  editor    User     @relation(fields: [editedBy], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([editedBy])
 } 

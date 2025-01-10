@@ -1,12 +1,35 @@
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from '@/lib/prisma';
+import { validateMessage } from "@/lib/validation/message";
+import { MessageStatus } from "@/types/chat";
+import { Prisma } from "@prisma/client";
+
+// Define the user select type
+const userSelect = {
+  id: true,
+  email: true,
+  name: true,
+  image: true,
+  createdAt: true,
+  updatedAt: true
+} satisfies Prisma.UserSelect;
 
 export async function GET(request: Request) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
+    const { userId } = await auth();
+    if (!userId) {
       return new NextResponse('Unauthorized', { status: 401 });
+    }
+
+    // Get the database user ID from Clerk ID
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true }
+    });
+
+    if (!user) {
+      return new NextResponse('User not found', { status: 404 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -51,11 +74,9 @@ export async function GET(request: Request) {
         user: {
           select: {
             id: true,
-            username: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            profileImage: true
+            name: true,
+            image: true,
+            email: true
           }
         }
       }
@@ -70,16 +91,30 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const user = await getCurrentUser();
+    const { userId } = await auth();
+    if (!userId) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
+
+    // Get the database user ID from Clerk ID
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true }
+    });
+
     if (!user) {
-      return new NextResponse('Unauthorized', { status: 401 });
+      return new NextResponse("User not found", { status: 404 });
     }
 
     const body = await request.json();
-    const { content, threadId } = body;
+    const { content, threadId, parentId } = body;
 
-    if (!content || !threadId) {
-      return new NextResponse('Content and thread ID are required', { status: 400 });
+    // Validate message
+    const validationResult = await validateMessage({ content, threadId, parentId }, user.id);
+    if (!validationResult.isValid) {
+      return new NextResponse(validationResult.errors?.[0] || 'Invalid message', { 
+        status: 400 
+      });
     }
 
     // Check if user is a participant of the thread
@@ -88,39 +123,58 @@ export async function POST(request: Request) {
         id: threadId,
         participants: {
           some: {
-            id: user.id
+            userId: user.id
           }
         }
       }
     });
 
     if (!thread) {
-      return new NextResponse('Thread not found or access denied', { status: 403 });
+      return new NextResponse("Thread not found or access denied", { status: 403 });
     }
 
+    // Create message with sanitized content
     const message = await prisma.message.create({
       data: {
-        content,
+        content: validationResult.sanitizedContent || content,
+        userId: user.id,
         threadId,
-        userId: user.id
+        parentId,
+        status: MessageStatus.SENT
       },
       include: {
         user: {
-          select: {
-            id: true,
-            username: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            profileImage: true
-          }
+          select: userSelect
         }
       }
     });
 
+    // Create notifications for all participants except the sender
+    const participants = await prisma.threadParticipant.findMany({
+      where: {
+        threadId,
+        NOT: {
+          userId: user.id
+        }
+      },
+      select: {
+        userId: true
+      }
+    });
+
+    if (participants.length > 0) {
+      await prisma.notification.createMany({
+        data: participants.map(participant => ({
+          userId: participant.userId,
+          messageId: message.id,
+          type: 'NEW_MESSAGE'
+        }))
+      });
+    }
+
     return NextResponse.json({ data: message }, { status: 201 });
   } catch (error) {
-    console.error('Error creating message:', error);
-    return new NextResponse('Internal Server Error', { status: 500 });
+    console.error("Error creating message:", error);
+    return new NextResponse("Internal Server Error", { status: 500 });
   }
 } 

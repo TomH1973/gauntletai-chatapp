@@ -12,10 +12,13 @@
 
 # production
 /build
+/dist
 
 # misc
 .DS_Store
 *.pem
+.env*
+!.env.example
 
 # debug
 npm-debug.log*
@@ -24,8 +27,17 @@ yarn-error.log*
 
 # local env files
 .env*.local
-.env
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts 
+next-env.d.ts
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Prisma
+prisma/*.db
+prisma/migrations/dev/ 

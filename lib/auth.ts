@@ -1,8 +1,8 @@
 import { hash, compare } from 'bcryptjs';
-import { sign } from 'jsonwebtoken';
-import { prisma } from './prisma';
+import { sign, verify } from 'jsonwebtoken';
 import { cookies } from 'next/headers';
-import { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies';
+import { prisma } from './prisma';
+import { User } from '@prisma/client';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const SESSION_COOKIE = 'auth_session';
@@ -31,7 +31,26 @@ export async function createSession(userId: string): Promise<string> {
   return token;
 }
 
-export async function validateSession(token: string) {
+export function getSessionCookie(token: string) {
+  return {
+    name: SESSION_COOKIE,
+    value: token,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/',
+    maxAge: SESSION_DURATION / 1000, // Convert to seconds
+  };
+}
+
+export async function getCurrentUser() {
+  const cookieStore = cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+
+  if (!token) {
+    return null;
+  }
+
   try {
     const session = await prisma.session.findUnique({
       where: { token },
@@ -52,22 +71,6 @@ export async function validateSession(token: string) {
   }
 }
 
-export async function getCurrentUser() {
-  try {
-    const cookieStore = cookies();
-    const sessionToken = cookieStore.get(SESSION_COOKIE)?.value;
-    
-    if (!sessionToken) {
-      return null;
-    }
-
-    return validateSession(sessionToken);
-  } catch (error) {
-    console.error('Get current user error:', error);
-    return null;
-  }
-}
-
 export async function deleteSession(token: string) {
   try {
     await prisma.session.delete({
@@ -79,15 +82,31 @@ export async function deleteSession(token: string) {
   }
 }
 
-export function getSessionCookie(token: string): ResponseCookie {
+export interface Session {
+  user: User;
+  token: string;
+}
+
+export async function getSession(): Promise<Session | null> {
+  const cookieStore = cookies();
+  const token = cookieStore.get('session_token')?.value;
+
+  if (!token) {
+    return null;
+  }
+
+  const session = await prisma.session.findUnique({
+    where: { token },
+    include: { user: true },
+  });
+
+  if (!session || session.expiresAt < new Date()) {
+    return null;
+  }
+
   return {
-    name: SESSION_COOKIE,
-    value: token,
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-    path: '/',
+    user: session.user,
+    token: session.token,
   };
 }
 

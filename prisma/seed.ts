@@ -1,114 +1,106 @@
-import { PrismaClient } from '@prisma/client'
-import { hashPassword } from '../lib/auth'
-
-const prisma = new PrismaClient()
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
 
 async function main() {
-  // Create test users
-  const users = await Promise.all([
-    prisma.user.upsert({
-      where: { email: 'alice@test.com' },
-      update: {},
-      create: {
-        email: 'alice@test.com',
-        username: 'alice',
-        passwordHash: await hashPassword('password123'),
-        firstName: 'Alice',
-        lastName: 'Test'
-      },
-    }),
-    prisma.user.upsert({
-      where: { email: 'bob@test.com' },
-      update: {},
-      create: {
-        email: 'bob@test.com',
-        username: 'bob',
-        passwordHash: await hashPassword('password123'),
-        firstName: 'Bob',
-        lastName: 'Test'
-      },
-    }),
-    prisma.user.upsert({
-      where: { email: 'charlie@test.com' },
-      update: {},
-      create: {
-        email: 'charlie@test.com',
-        username: 'charlie',
-        passwordHash: await hashPassword('password123'),
-        firstName: 'Charlie',
-        lastName: 'Test'
-      },
-    }),
-    prisma.user.upsert({
-      where: { email: 'dave@test.com' },
-      update: {},
-      create: {
-        email: 'dave@test.com',
-        username: 'dave',
-        passwordHash: await hashPassword('password123'),
-        firstName: 'Dave',
-        lastName: 'Test'
-      },
-    })
-  ])
+  // Clean up existing data
+  await prisma.$transaction([
+    prisma.message.deleteMany(),
+    prisma.thread.deleteMany(),
+    prisma.user.deleteMany(),
+  ]);
 
-  // Create test threads with distinct participant combinations
-  const threads = await Promise.all([
-    // Alice and Bob
-    prisma.thread.create({
-      data: {
-        title: 'Alice-Bob Chat',
-        participants: {
-          connect: [{ id: users[0].id }, { id: users[1].id }]
-        }
-      },
-    }),
-    // Alice and Charlie
-    prisma.thread.create({
-      data: {
-        title: 'Alice-Charlie Chat',
-        participants: {
-          connect: [{ id: users[0].id }, { id: users[2].id }]
-        }
-      },
-    }),
-    // Bob and Dave
-    prisma.thread.create({
-      data: {
-        title: 'Bob-Dave Chat',
-        participants: {
-          connect: [{ id: users[1].id }, { id: users[3].id }]
-        }
-      },
-    })
-  ])
+  // Create users
+  const alice = await prisma.user.create({
+    data: {
+      email: 'alice@example.com',
+    },
+  });
 
-  // Create test messages
+  const bob = await prisma.user.create({
+    data: {
+      email: 'bob@example.com',
+    },
+  });
+
+  const charlie = await prisma.user.create({
+    data: {
+      email: 'charlie@example.com',
+    },
+  });
+
+  // Create threads with participants
+  const aliceBobThread = await prisma.thread.create({
+    data: {
+      participants: {
+        create: [
+          {
+            user: { connect: { id: alice.id } },
+            role: 'member',
+          },
+          {
+            user: { connect: { id: bob.id } },
+            role: 'member',
+          },
+        ],
+      },
+    },
+  });
+
+  const aliceCharlieThread = await prisma.thread.create({
+    data: {
+      participants: {
+        create: [
+          {
+            user: { connect: { id: alice.id } },
+            role: 'member',
+          },
+          {
+            user: { connect: { id: charlie.id } },
+            role: 'member',
+          },
+        ],
+      },
+    },
+  });
+
+  // Create messages
+  const threads = [aliceBobThread, aliceCharlieThread];
+  const users = [alice, bob, charlie];
+
   for (const thread of threads) {
-    const threadParticipants = await prisma.thread.findUnique({
-      where: { id: thread.id },
-      include: { participants: true }
-    });
-    
-    if (!threadParticipants) continue;
-    
-    await prisma.message.createMany({
-      data: threadParticipants.participants.map(user => ({
-        content: `Message from ${user.username} in ${thread.title}`,
-        userId: user.id,
-        threadId: thread.id,
-      }))
-    })
+    for (const user of users) {
+      const isParticipant = await prisma.thread.findFirst({
+        where: {
+          id: thread.id,
+          participants: {
+            some: {
+              userId: user.id,
+            },
+          },
+        },
+      });
+
+      if (isParticipant) {
+        await prisma.message.create({
+          data: {
+            content: `Hello from ${user.email}!`,
+            user: { connect: { id: user.id } },
+            thread: { connect: { id: thread.id } },
+            status: 'SENT',
+          },
+        });
+      }
+    }
   }
 
-  console.log('Seed data created successfully')
+  console.log('Database has been seeded. 🌱');
 }
 
 main()
   .catch((e) => {
-    console.error(e)
-    process.exit(1)
+    console.error(e);
+    process.exit(1);
   })
   .finally(async () => {
-    await prisma.$disconnect()
-  }) 
+    await prisma.$disconnect();
+  }); 
