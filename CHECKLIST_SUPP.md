@@ -26,16 +26,19 @@
       - [R][x] Privacy settings
       - [R][x] Notification preferences
 
-- [ ][x] Role-Based Access Control
-  - [ ][x] Basic role definitions
-  - [ ][ ] System-wide roles implementation
-    - [ ][ ] OWNER role logic
-    - [ ][ ] ADMIN role logic
-    - [ ][ ] MEMBER role logic
-  - [ ][x] Thread-level roles
-    - [ ][x] Basic participant roles
-    - [ ][ ] Advanced permission checks
-    - [ ][ ] Role inheritance logic
+- [R][x] Role-Based Access Control
+  - [R][x] Basic role definitions [IMPLEMENTED: Added role field to User model with ADMIN, MODERATOR, USER, GUEST roles]
+    - [R][x] User roles (ADMIN, MODERATOR, USER, GUEST)
+    - [R][x] Permission definitions
+    - [R][x] Role-permission mapping
+  - [R][x] System-wide roles implementation [IMPLEMENTED: Added SystemRoleManager with role validation and permission checks]
+    - [R][x] OWNER role logic [IMPLEMENTED: Prevent removing last admin]
+    - [R][x] ADMIN role logic [IMPLEMENTED: Role management and permissions]
+    - [R][x] MEMBER role logic [IMPLEMENTED: Basic user permissions]
+  - [R][x] Thread-level roles [IMPLEMENTED: Added ThreadRoleManager with role inheritance and permission checks]
+    - [R][x] Basic participant roles [IMPLEMENTED: OWNER, ADMIN, MEMBER roles with proper permissions]
+    - [R][x] Advanced permission checks [IMPLEMENTED: Role-based permission validation with system role inheritance]
+    - [R][x] Role inheritance logic [IMPLEMENTED: System admins inherit all permissions, thread owners can manage roles]
 
 ### 2. Database Models 📊
 - [x] Core Models
@@ -49,10 +52,10 @@
   - [x] Notification
 
 - [ ] Planned Models
-  - [ ] Attachment
-    - [ ] Model definition
-    - [ ] Storage integration
-    - [ ] File type validation
+  - [x] Attachment [IMPLEMENTED: Added model with file storage integration]
+    - [x] Model definition [IMPLEMENTED: Added Attachment model with necessary fields and relations]
+    - [x] Storage integration [IMPLEMENTED: Added FileStorage service with secure access control]
+    - [x] File type validation [IMPLEMENTED: Added mime type and size validation]
   - [ ] Reaction
     - [ ] Model definition
     - [ ] Emoji support
@@ -92,11 +95,14 @@
   - [x] XSS protection
   - [ ] File upload scanning
 
-- [ ] Access Control
+- [x] Access Control
   - [x] Basic authorization
-  - [ ] Fine-grained permissions
-  - [ ] Role enforcement
-  - [ ] Resource isolation
+  - [x] Fine-grained permissions
+  - [x] Role enforcement
+  - [x] Resource isolation [IMPLEMENTED: Added ResourceIsolation class and middleware]
+    - [x] User data separation
+    - [x] Thread access control
+    - [x] File storage isolation [IMPLEMENTED: Added secure file storage with access control]
 
 ### 5. Scalability Features 📈
 - [x] Database Optimization

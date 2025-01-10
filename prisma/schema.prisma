@@ -21,12 +21,21 @@ enum ParticipantRole {
   MEMBER
 }
 
+enum FileType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  OTHER
+}
+
 model User {
   id             String           @id @default(cuid())
   clerkId        String           @unique
   email          String           @unique
   name           String?
   image          String?
+  role           String          @default("USER")
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   lastLoginAt    DateTime?
@@ -38,6 +47,7 @@ model User {
   notifications  Notification[]
   sessions       Session[]
   preferences    UserPreferences?
+  attachments    Attachment[]
 
   @@index([email])
   @@index([clerkId])
@@ -83,6 +93,7 @@ model Message {
   notifications Notification[]
   readBy        MessageRead[]
   editHistory   MessageEdit[]
+  attachments   Attachment[]
 
   @@index([threadId])
   @@index([userId])
@@ -116,14 +127,14 @@ model Notification {
 }
 
 model ThreadParticipant {
-  id        String   @id @default(cuid())
+  id        String         @id @default(cuid())
   userId    String
   threadId  String
-  role      String   @default("MEMBER")
-  joinedAt  DateTime @default(now())
+  role      ParticipantRole @default(MEMBER)
+  joinedAt  DateTime       @default(now())
   leftAt    DateTime?
-  user      User     @relation(fields: [userId], references: [id])
-  thread    Thread   @relation(fields: [threadId], references: [id])
+  user      User           @relation(fields: [userId], references: [id])
+  thread    Thread         @relation(fields: [threadId], references: [id])
 
   @@unique([userId, threadId])
   @@index([threadId])
@@ -161,4 +172,26 @@ model UserPreferences {
   updatedAt           DateTime  @updatedAt
 
   @@index([userId])
+}
+
+model Attachment {
+  id          String    @id @default(cuid())
+  filename    String
+  fileType    FileType
+  mimeType    String
+  size        Int
+  url         String
+  key         String    @unique
+  messageId   String
+  message     Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  uploaderId  String
+  uploader    User      @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  isPublic    Boolean   @default(false)
+  isDeleted   Boolean   @default(false)
+
+  @@index([messageId])
+  @@index([uploaderId])
+  @@index([fileType])
 } 
