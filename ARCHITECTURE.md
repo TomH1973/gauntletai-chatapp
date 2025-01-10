@@ -30,6 +30,39 @@ graph TD
 - Profile management with customizable user profiles
 - Secure authentication flows
 
+### 1.1 User Model Architecture
+- Clerk manages authentication state and user identity
+- Local User model maintains application-specific data:
+  ```
+  Clerk User (auth)        Local User (app data)
+  ├─ Identity             ├─ Application ID
+  ├─ Auth state          ├─ Message history
+  ├─ Sessions            ├─ Thread participation
+  └─ Security            └─ User preferences
+  ```
+- Synchronization via webhooks ensures consistency
+- Clerk ID serves as the source of truth for user identity
+- This separation allows:
+  - Independent scaling of auth and app data
+  - Reduced vendor lock-in
+  - Better performance for frequent app operations
+
+### 1.2 Role-Based Access Control
+- System-wide roles:
+  - OWNER: Full system access
+  - ADMIN: Moderation and management
+  - MEMBER: Standard user access
+
+- Thread-level roles:
+  - OWNER: Can delete thread, manage participants
+  - ADMIN: Can moderate messages, add/remove participants
+  - MEMBER: Can send messages, view history
+
+- Permission inheritance:
+  - System OWNER has OWNER rights in all threads
+  - System ADMIN has ADMIN rights in all threads
+  - Default role is MEMBER
+
 ### 2. Frontend Interface
 
 ```
