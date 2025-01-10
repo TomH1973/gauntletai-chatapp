@@ -8,6 +8,7 @@ import { format } from 'date-fns';
 import { Edit2, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MessageStatus } from './MessageStatus';
+import { RichContent } from '@/components/chat/RichContent';
 
 interface MessageItemProps {
   message: Message;
@@ -70,7 +71,7 @@ export function MessageItem({
               autoFocus
             />
           ) : (
-            <p className="whitespace-pre-wrap">{message.content}</p>
+            <RichContent content={message.content} />
           )}
         </div>
 

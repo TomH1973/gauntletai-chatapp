@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 import { useTheme } from 'next-themes';
@@ -14,6 +14,10 @@ export function EmojiPicker({ onSelectAction, onCloseAction }: EmojiPickerProps)
   const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const handleSelect = useCallback((data: any) => {
+    onSelectAction(data.native);
+  }, [onSelectAction]);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -26,17 +30,17 @@ export function EmojiPicker({ onSelectAction, onCloseAction }: EmojiPickerProps)
   }, [onCloseAction]);
 
   return (
-    <div ref={containerRef} className="rounded-lg shadow-lg">
+    <div ref={containerRef} className="absolute z-50 shadow-lg rounded-lg">
       <Picker
         data={data}
-        onEmojiSelect={(emoji: { native: string }) => onSelectAction(emoji.native)}
+        onEmojiSelect={handleSelect}
         theme={theme === 'dark' ? 'dark' : 'light'}
-        set="native"
-        showPreview={false}
-        showSkinTones={false}
-        emojiSize={20}
-        emojiButtonSize={28}
-        maxFrequentRows={2}
+        previewPosition="none"
+        skinTonePosition="none"
+        searchPosition="none"
+        navPosition="none"
+        perLine={8}
+        maxFrequentRows={1}
       />
     </div>
   );

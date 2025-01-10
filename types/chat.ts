@@ -22,15 +22,24 @@ export interface MessageAttachment {
   size: number;
 }
 
-export type Message = PrismaMessage & {
-  user: Pick<PrismaUser, 'id' | 'name' | 'image'>;
-  tempId?: string;
-  edits?: MessageEdit[];
+export interface Message {
+  id: string;
+  content: string;
+  threadId: string;
+  userId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  parentId?: string | null;
+  user: {
+    id: string;
+    name: string;
+    image: string;
+  };
+  replies?: Message[];
   reactions?: MessageReaction[];
-  attachments?: MessageAttachment[];
   readBy?: Array<{ userId: string; readAt: Date }>;
-  readAt?: Date | null;
-};
+  status: MessageStatus;
+}
 
 export type Thread = {
   id: string;
@@ -56,11 +65,10 @@ export interface ClientToServerEvents {
     tempId?: string;
   }) => void;
   'message:read': (messageId: string) => void;
+  'message:react': (data: { messageId: string; emoji: string }) => void;
+  'message:react:remove': (data: { messageId: string; emoji: string }) => void;
   'thread:join': (threadId: string) => void;
   'thread:leave': (threadId: string) => void;
-  'thread:participantAdded': (data: { threadId: string; userId: string }) => void;
-  'thread:participantRemoved': (data: { threadId: string; userId: string }) => void;
-  'thread:participantUpdated': (data: { threadId: string; userId: string }) => void;
   'typing:start': (threadId: string) => void;
   'typing:stop': (threadId: string) => void;
   'presence:ping': () => void;
@@ -68,13 +76,11 @@ export interface ClientToServerEvents {
 
 export interface ServerToClientEvents {
   'message:new': (message: Message) => void;
-  'message:status': (data: { messageId: string; status: PrismaMessageStatus }) => void;
-  'thread:participantAdded': (participant: ThreadParticipant) => void;
-  'thread:participantRemoved': (data: { threadId: string; userId: string }) => void;
-  'thread:participantUpdated': (participant: ThreadParticipant) => void;
-  'typing:update': (data: { threadId: string; users: Array<{ id: string; username: string }> }) => void;
+  'message:updated': (message: Message) => void;
+  'message:reaction': (data: { messageId: string; reaction: MessageReaction }) => void;
+  'message:reaction:removed': (data: { messageId: string; reaction: MessageReaction }) => void;
+  'thread:updated': (thread: Thread) => void;
+  'typing:update': (data: { threadId: string; userId: string; isTyping: boolean }) => void;
+  'presence:update': (data: { userId: string; isOnline: boolean; lastSeen?: string }) => void;
   'error': (error: { code: string; message: string }) => void;
-  'presence:online': (data: { userId: string; name: string | null }) => void;
-  'presence:offline': (data: { userId: string; lastSeen: Date }) => void;
-  'presence:pong': (data: { onlineUsers: string[]; lastSeenTimes: Record<string, Date> }) => void;
 } 

@@ -78,27 +78,24 @@ model Thread {
 }
 
 model Message {
-  id            String         @id @default(cuid())
-  content       String
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  status        MessageStatus  @default(SENDING)
-  isEdited      Boolean        @default(false)
-  userId        String
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  threadId      String
-  thread        Thread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  parentId      String?
-  parent        Message?       @relation("Replies", fields: [parentId], references: [id])
-  replies       Message[]      @relation("Replies")
-  notifications Notification[]
-  readBy        MessageRead[]
-  editHistory   MessageEdit[]
-  attachments   Attachment[]
-  reactions     Reaction[]
+  id        String   @id @default(uuid())
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  threadId  String
+  parentId  String?
+  status    MessageStatus @default(SENT)
+  
+  // Relations
+  user      User     @relation(fields: [userId], references: [id])
+  thread    Thread   @relation(fields: [threadId], references: [id])
+  parent    Message? @relation("Replies", fields: [parentId], references: [id])
+  replies   Message[] @relation("Replies")
+  reactions Reaction[]
+  readBy    MessageRead[]
 
-  @@index([threadId])
-  @@index([userId])
+  @@index([threadId, createdAt])
   @@index([parentId])
 }
 
@@ -210,4 +207,14 @@ model Reaction {
   @@unique([messageId, userId, emoji])  // One unique emoji reaction per user per message
   @@index([messageId])
   @@index([userId])
+}
+
+model FileScanResult {
+  id        String   @id @default(cuid())
+  hash      String   @unique
+  isClean   Boolean
+  threat    String?
+  scannedAt DateTime @default(now())
+
+  @@index([hash])
 } 

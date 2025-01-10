@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { validateMessage } from "@/lib/validation/message";
 import { MessageStatus } from "@/types/chat";
 import { Prisma } from "@prisma/client";
+import { emitToThread } from '@/lib/socket';
 
 // Define the user select type
 const userSelect = {
@@ -89,92 +90,75 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    const { userId } = await auth();
+    const { userId } = auth();
     if (!userId) {
-      return new NextResponse("Unauthorized", { status: 401 });
+      return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    // Get the database user ID from Clerk ID
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true }
-    });
+    const { content, threadId, parentId } = await req.json();
 
-    if (!user) {
-      return new NextResponse("User not found", { status: 404 });
-    }
-
-    const body = await request.json();
-    const { content, threadId, parentId } = body;
-
-    // Validate message
-    const validationResult = await validateMessage({ content, threadId, parentId }, user.id);
-    if (!validationResult.isValid) {
-      return new NextResponse(validationResult.errors?.[0] || 'Invalid message', { 
-        status: 400 
-      });
-    }
-
-    // Check if user is a participant of the thread
-    const thread = await prisma.thread.findFirst({
+    // Validate thread access
+    const participant = await prisma.threadParticipant.findUnique({
       where: {
-        id: threadId,
-        participants: {
-          some: {
-            userId: user.id
-          }
+        threadId_userId: {
+          threadId,
+          userId
         }
       }
     });
 
-    if (!thread) {
-      return new NextResponse("Thread not found or access denied", { status: 403 });
+    if (!participant) {
+      return new NextResponse('Forbidden', { status: 403 });
     }
 
-    // Create message with sanitized content
+    // If this is a reply, validate parent message exists and is in same thread
+    if (parentId) {
+      const parentMessage = await prisma.message.findUnique({
+        where: { id: parentId }
+      });
+
+      if (!parentMessage || parentMessage.threadId !== threadId) {
+        return new NextResponse('Invalid parent message', { status: 400 });
+      }
+    }
+
+    // Create message
     const message = await prisma.message.create({
       data: {
-        content: validationResult.sanitizedContent || content,
-        userId: user.id,
+        content,
         threadId,
+        userId,
         parentId,
-        status: MessageStatus.SENT
+        status: 'SENT'
       },
       include: {
         user: {
-          select: userSelect
-        }
+          select: {
+            id: true,
+            name: true,
+            image: true
+          }
+        },
+        replies: true,
+        reactions: true,
+        readBy: true
       }
     });
 
-    // Create notifications for all participants except the sender
-    const participants = await prisma.threadParticipant.findMany({
-      where: {
-        threadId,
-        NOT: {
-          userId: user.id
-        }
-      },
-      select: {
-        userId: true
-      }
+    // Update thread's lastMessageAt
+    await prisma.thread.update({
+      where: { id: threadId },
+      data: { updatedAt: message.createdAt }
     });
 
-    if (participants.length > 0) {
-      await prisma.notification.createMany({
-        data: participants.map(participant => ({
-          userId: participant.userId,
-          messageId: message.id,
-          type: 'NEW_MESSAGE'
-        }))
-      });
-    }
+    // Emit to all participants
+    emitToThread(threadId, 'message:new', message);
 
-    return NextResponse.json({ data: message }, { status: 201 });
+    return NextResponse.json(message);
   } catch (error) {
-    console.error("Error creating message:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    console.error('[MESSAGES_POST]', error);
+    return new NextResponse('Internal Error', { status: 500 });
   }
 } 
