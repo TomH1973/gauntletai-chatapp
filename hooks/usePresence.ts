@@ -91,23 +91,22 @@ export function usePresence() {
 
     // Initial ping
     socket.emit('presence:ping');
-
     // Handle presence events
-    socket.on('presence:pong', (data) => {
+    socket.on('presence:pong', (data: { onlineUsers: string[], lastSeenTimes: Record<string, string> }) => {
       setState(prev => ({
         onlineUsers: new Set(data.onlineUsers),
-        lastSeenTimes: new Map(Object.entries(data.lastSeenTimes).map(([id, time]) => [id, new Date(time)])),
+        lastSeenTimes: new Map(Object.entries(data.lastSeenTimes).map(([id, time]) => [id, new Date(time as string)])),
       }));
     });
 
-    socket.on('presence:online', (data) => {
+    socket.on('presence:online', (data: { userId: string }) => {
       setState(prev => ({
         ...prev,
         onlineUsers: new Set([...prev.onlineUsers, data.userId]),
       }));
     });
 
-    socket.on('presence:offline', (data) => {
+    socket.on('presence:offline', (data: { userId: string, lastSeen: Date }) => {
       setState(prev => {
         const newOnlineUsers = new Set(prev.onlineUsers);
         newOnlineUsers.delete(data.userId);
@@ -123,8 +122,8 @@ export function usePresence() {
     return () => {
       clearInterval(interval);
       socket.off('presence:pong');
-      socket.off('presence:online');
-      socket.off('presence:offline');
+      socket.off('presence:online' as const);
+      socket.off('presence:offline' as const);
     };
   }, [socket]);
 

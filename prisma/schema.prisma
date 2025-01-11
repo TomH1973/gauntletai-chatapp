@@ -7,12 +7,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum MessageStatus {
-  SENDING
-  SENT
-  DELIVERED
-  READ
-  FAILED
+// Core enums
+enum UserStatus {
+  ONLINE
+  OFFLINE
+  AWAY
+  DO_NOT_DISTURB
 }
 
 enum ParticipantRole {
@@ -21,200 +21,196 @@ enum ParticipantRole {
   MEMBER
 }
 
-enum FileType {
-  IMAGE
-  VIDEO
-  AUDIO
-  DOCUMENT
-  OTHER
+enum MessageStatus {
+  SENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
 }
 
+enum MessageType {
+  TEXT
+  SYSTEM
+  FILE
+}
+
+// Core user model with Clerk integration
 model User {
-  id             String           @id @default(cuid())
-  clerkId        String           @unique
-  email          String           @unique
-  name           String?
-  image          String?
-  role           String          @default("USER")
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  lastLoginAt    DateTime?
-  isActive       Boolean          @default(true)
-  messages       Message[]
-  threads        ThreadParticipant[]
-  readMessages   MessageRead[]
-  messageEdits   MessageEdit[]
-  notifications  Notification[]
-  sessions       Session[]
-  preferences    UserPreferences?
-  attachments    Attachment[]
-  reactions      Reaction[]
+  id            String    @id @default(cuid())
+  clerkId       String    @unique // External Clerk ID
+  email         String    @unique
+  name          String    // Required for display
+  image         String    // Required for avatar
+  status        UserStatus @default(OFFLINE)
+  lastActiveAt  DateTime?
+  lastSeenAt    DateTime?
+  
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  @@index([email])
+  // Relations
+  presence      UserPresence[]
+  participants  ThreadParticipant[]
+  messages      Message[]
+  readReceipts  MessageRead[]
+  sessions      Session[]
+
+  // Indexes for quick lookups
   @@index([clerkId])
+  @@index([email])
+  @@index([status])
 }
 
-model Session {
-  id        String   @id @default(cuid())
-  userId    String
-  token     String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+// Real-time presence tracking
+model UserPresence {
+  id            String    @id @default(cuid())
+  userId        String
+  deviceId      String    // For multi-device support
+  status        UserStatus
+  lastActiveAt  DateTime
+  metadata      Json?     // Device info, client version, etc.
+  
+  // Relations
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // Constraints
+  @@unique([userId, deviceId])
+  @@index([userId])
+  @@index([status])
+}
+
+// Session management
+model Session {
+  id            String    @id @default(cuid())
+  userId        String
+  deviceId      String
+  token         String    @unique
+  lastActiveAt  DateTime
+  expiresAt     DateTime
+  
+  // Relations
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes
   @@index([userId])
   @@index([token])
 }
 
+// Thread/conversation model
 model Thread {
-  id           String             @id @default(cuid())
-  name         String?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-  messages     Message[]
-  participants ThreadParticipant[]
+  id            String    @id @default(cuid())
+  name          String    // Required for group chats
+  isGroup       Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastMessageAt DateTime?
+  
+  // Relations
+  participants  ThreadParticipant[]
+  messages      Message[]
+  activities    ThreadActivity[]
 
+  // Indexes
+  @@index([lastMessageAt])
   @@index([updatedAt])
 }
 
-model Message {
-  id        String   @id @default(uuid())
-  content   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  userId    String
-  threadId  String
-  parentId  String?
-  status    MessageStatus @default(SENT)
+// Enhanced participant model with granular permissions
+model ThreadParticipant {
+  id            String    @id @default(cuid())
+  threadId      String
+  userId        String
+  role          ParticipantRole @default(MEMBER)
+  
+  // Permissions
+  canInvite     Boolean   @default(false)
+  canRemove     Boolean   @default(false)
+  canEditThread Boolean   @default(false)
+  
+  // Timestamps
+  joinedAt      DateTime  @default(now())
+  leftAt        DateTime?
   
   // Relations
-  user      User     @relation(fields: [userId], references: [id])
-  thread    Thread   @relation(fields: [threadId], references: [id])
-  parent    Message? @relation("Replies", fields: [parentId], references: [id])
-  replies   Message[] @relation("Replies")
-  reactions Reaction[]
-  readBy    MessageRead[]
+  thread        Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activities    ThreadActivity[]
 
-  @@index([threadId, createdAt])
-  @@index([parentId])
-}
-
-model MessageRead {
-  id        String   @id @default(cuid())
-  messageId String
-  userId    String
-  readAt    DateTime @default(now())
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([messageId])
-  @@index([userId])
-}
-
-model Notification {
-  id        String   @id @default(cuid())
-  type      String
-  userId    String
-  messageId String
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-  @@index([messageId])
-}
-
-model ThreadParticipant {
-  id        String         @id @default(cuid())
-  userId    String
-  threadId  String
-  role      ParticipantRole @default(MEMBER)
-  joinedAt  DateTime       @default(now())
-  leftAt    DateTime?
-  user      User           @relation(fields: [userId], references: [id])
-  thread    Thread         @relation(fields: [threadId], references: [id])
-
+  // Constraints
   @@unique([userId, threadId])
   @@index([threadId])
   @@index([userId])
+  @@index([role])
 }
 
-model MessageEdit {
-  id        String   @id @default(cuid())
-  content   String
-  messageId String
-  editedBy  String
-  editedAt  DateTime @default(now())
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  editor    User     @relation(fields: [editedBy], references: [id], onDelete: Cascade)
+// Real-time thread activity tracking
+model ThreadActivity {
+  id            String    @id @default(cuid())
+  threadId      String
+  userId        String
+  participantId String
+  isTyping      Boolean   @default(false)
+  lastActiveAt  DateTime
+  
+  // Relations
+  thread        Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  participant   ThreadParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
-  @@index([messageId])
-  @@index([editedBy])
-}
-
-model UserPreferences {
-  id                   String    @id @default(cuid())
-  userId               String    @unique
-  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  theme                String    @default("system")
-  shareProfile         Boolean   @default(true)
-  showOnlineStatus     Boolean   @default(true)
-  allowMessagePreviews Boolean   @default(true)
-  retainMessageHistory Boolean   @default(true)
-  notificationSound    Boolean   @default(true)
-  desktopNotifications Boolean   @default(true)
-  emailNotifications   Boolean   @default(true)
-  language            String    @default("en")
-  timezone            String    @default("UTC")
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-
+  // Indexes
+  @@index([threadId])
   @@index([userId])
+  @@index([lastActiveAt])
 }
 
-model Attachment {
-  id          String    @id @default(cuid())
-  filename    String
-  fileType    FileType
-  mimeType    String
-  size        Int
-  url         String
-  key         String    @unique
-  messageId   String
-  message     Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  uploaderId  String
-  uploader    User      @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  isPublic    Boolean   @default(false)
-  isDeleted   Boolean   @default(false)
+// Enhanced message model
+model Message {
+  id            String    @id @default(cuid())
+  threadId      String
+  userId        String
+  type          MessageType @default(TEXT)
+  content       String
+  metadata      Json?     // For rich messages, files, etc.
+  status        MessageStatus @default(SENDING)
+  
+  // Reply support
+  parentId      String?
+  
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  editedAt      DateTime?
+  deletedAt     DateTime?
+  
+  // Relations
+  thread        Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent        Message?  @relation("Replies", fields: [parentId], references: [id])
+  replies       Message[] @relation("Replies")
+  readReceipts  MessageRead[]
 
-  @@index([messageId])
-  @@index([uploaderId])
-  @@index([fileType])
+  // Indexes
+  @@index([threadId, createdAt])
+  @@index([userId])
+  @@index([parentId])
+  @@index([status])
 }
 
-model Reaction {
-  id        String   @id @default(cuid())
-  emoji     String   // Unicode emoji or custom emoji identifier
-  messageId String
-  userId    String
-  createdAt DateTime @default(now())
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+// Enhanced read receipts
+model MessageRead {
+  id            String    @id @default(cuid())
+  messageId     String
+  userId        String
+  readAt        DateTime  @default(now())
+  deliveredAt   DateTime  @default(now())
+  
+  // Relations
+  message       Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([messageId, userId, emoji])  // One unique emoji reaction per user per message
+  // Constraints
+  @@unique([messageId, userId])
   @@index([messageId])
   @@index([userId])
-}
-
-model FileScanResult {
-  id        String   @id @default(cuid())
-  hash      String   @unique
-  isClean   Boolean
-  threat    String?
-  scannedAt DateTime @default(now())
-
-  @@index([hash])
 } 
