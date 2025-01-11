@@ -1,17 +1,32 @@
+import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
 
 export async function GET() {
   try {
-    const user = await getCurrentUser();
+    const { userId } = await auth();
     
-    if (!user) {
+    if (!userId) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    // Return user without sensitive data
-    const { passwordHash: _, ...userWithoutPassword } = user;
-    return NextResponse.json(userWithoutPassword);
+    const user = await prisma.user.findUnique({
+      where: { clerkId: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        image: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+
+    if (!user) {
+      return new NextResponse('User not found', { status: 404 });
+    }
+
+    return NextResponse.json(user);
   } catch (error) {
     console.error('Get current user error:', error);
     return new NextResponse('Internal Server Error', { status: 500 });
