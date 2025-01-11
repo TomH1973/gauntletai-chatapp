@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { MessageStatus, ParticipantRole } from '@/types/chat';
+import { MessageStatus } from '@/types/chat';
+import { ParticipantRole } from '@prisma/client';
 import { profanityFilter } from '@/lib/utils';
 
 // Constants for validation rules

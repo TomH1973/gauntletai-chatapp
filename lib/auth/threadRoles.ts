@@ -1,4 +1,4 @@
-import { type ParticipantRole } from '.prisma/client';
+import { ParticipantRole } from '@prisma/client';
 import { prisma } from '../prisma';
 import { Permission, UserRole } from './roles';
 import { SystemRoleManager } from './systemRoles';
@@ -14,9 +14,9 @@ export type ThreadPermission =
   | 'message:delete'
   | '*';
 
-const OWNER = 'OWNER' as const;
-const ADMIN = 'ADMIN' as const;
-const MEMBER = 'MEMBER' as const;
+const OWNER: ParticipantRole = 'OWNER';
+const ADMIN: ParticipantRole = 'ADMIN';
+const MEMBER: ParticipantRole = 'MEMBER';
 
 export const THREAD_ROLE_PERMISSIONS: Record<ParticipantRole, ThreadPermission[]> = {
   [OWNER]: ['*'],

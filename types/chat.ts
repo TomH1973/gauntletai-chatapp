@@ -1,4 +1,6 @@
-import { Message as PrismaMessage, ThreadParticipant as PrismaThreadParticipant, User as PrismaUser, MessageStatus as PrismaMessageStatus } from '@prisma/client';
+import { Message as PrismaMessage, ThreadParticipant as PrismaThreadParticipant, User as PrismaUser, MessageStatus } from '@prisma/client';
+
+export { MessageStatus };
 
 export interface MessageReaction {
   id: string;
@@ -55,8 +57,6 @@ export type ThreadParticipant = PrismaThreadParticipant & {
   user: Pick<PrismaUser, 'id' | 'name' | 'image'>;
 };
 
-export { PrismaMessageStatus as MessageStatus };
-
 export interface ClientToServerEvents {
   'message:send': (data: {
     content: string;
@@ -82,5 +82,8 @@ export interface ServerToClientEvents {
   'thread:updated': (thread: Thread) => void;
   'typing:update': (data: { threadId: string; userId: string; isTyping: boolean }) => void;
   'presence:update': (data: { userId: string; isOnline: boolean; lastSeen?: string }) => void;
+  'presence:pong': (data: { onlineUsers: string[]; lastSeenTimes: Record<string, string> }) => void;
+  'presence:online': (data: { userId: string }) => void;
+  'presence:offline': (data: { userId: string; lastSeen: Date }) => void;
   'error': (error: { code: string; message: string }) => void;
 } 
