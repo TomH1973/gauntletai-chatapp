@@ -27,14 +27,12 @@ export async function GET() {
       },
       select: {
         id: true,
-        username: true,
+        name: true,
         email: true,
-        firstName: true,
-        lastName: true,
-        profileImage: true
+        image: true
       },
       orderBy: {
-        username: 'asc'
+        name: 'asc'
       }
     });
 

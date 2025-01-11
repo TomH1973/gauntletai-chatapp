@@ -1,64 +1,62 @@
 'use client';
 
-import { ChatInterface } from '@/components/chat/ChatInterface';
-
-const testThread = {
-    id: 'test-thread',
-    title: 'Test Chat',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    lastMessageAt: null
-};
-
-const testUser = {
-    id: 'current-user',
-    name: 'Current User',
-    email: 'test@example.com',
-    image: 'https://via.placeholder.com/40'
-};
-
-const testUsers = {
-    'current-user': testUser,
-    'other-user': {
-        id: 'other-user',
-        name: 'Other User',
-        email: 'other@example.com',
-        image: 'https://via.placeholder.com/40'
-    }
-};
-
-const testMessages = [
-    {
-        id: '1',
-        content: 'Hello, this is a test message',
-        userId: 'other-user',
-        threadId: 'test-thread',
-        createdAt: new Date(Date.now() - 1000 * 60 * 5),
-        updatedAt: new Date(Date.now() - 1000 * 60 * 5),
-        status: 'delivered' as const,
-        isEdited: false
-    },
-    {
-        id: '2',
-        content: 'This is a reply from the current user',
-        userId: 'current-user',
-        threadId: 'test-thread',
-        createdAt: new Date(Date.now() - 1000 * 60),
-        updatedAt: new Date(Date.now() - 1000 * 60),
-        status: 'delivered' as const,
-        isEdited: false
-    }
-];
+import { useEffect, useState } from 'react';
+import { Manager } from 'socket.io-client';
 
 export default function TestPage() {
-    return (
-        <div className="h-screen p-4">
-            <ChatInterface
-                thread={testThread}
-                currentUser={testUser}
-                users={testUsers}
-                initialMessages={testMessages}
-            />
+  const [connected, setConnected] = useState(false);
+  const [log, setLog] = useState<string[]>([]);
+
+  useEffect(() => {
+    const manager = new Manager('http://localhost:4000', {
+      transports: ['websocket'],
+    });
+    const socket = manager.socket('/');
+
+    socket.on('connect', () => {
+      setConnected(true);
+      addLog('Connected to WebSocket server');
+    });
+
+    socket.on('disconnect', () => {
+      setConnected(false);
+      addLog('Disconnected from WebSocket server');
+    });
+
+    socket.on('connect_error', (error: Error) => {
+      addLog(`Connection error: ${error.message}`);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
+  const addLog = (message: string) => {
+    setLog((prev) => [...prev, `${new Date().toISOString()}: ${message}`]);
+  };
+
+  return (
+    <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">WebSocket Test Page</h1>
+      
+      <div className="mb-4 flex items-center">
+        <div 
+          className={`w-4 h-4 rounded-full mr-2 ${
+            connected ? 'bg-green-500' : 'bg-red-500'
+          }`}
+        />
+        <span>{connected ? 'Connected' : 'Disconnected'}</span>
+      </div>
+
+      <div className="border rounded p-4 bg-gray-50">
+        <h2 className="text-lg font-semibold mb-2">Connection Log</h2>
+        <div className="font-mono text-sm">
+          {log.map((entry, i) => (
+            <div key={i} className="mb-1">{entry}</div>
+          ))}
         </div>
-    );
+      </div>
+    </div>
+  );
 } 
