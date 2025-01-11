@@ -1,79 +1,83 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentUser } from '@/lib/auth';
+import { auth } from '@clerk/nextjs/server';
 import { logger } from '@/lib/logger';
+import { ParticipantRole } from '@prisma/client';
 
 export async function POST(req: Request) {
   try {
-    const user = await getCurrentUser();
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId: userId }
+    });
+
     if (!user) {
-      return new NextResponse('Unauthorized', { status: 401 });
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const { participantIds, title } = await req.json();
-    if (!participantIds || !Array.isArray(participantIds) || participantIds.length === 0) {
-      return new NextResponse('Invalid participants', { status: 400 });
+    const body = await req.json();
+    const { name, participantIds } = body;
+
+    if (!name || !participantIds || !Array.isArray(participantIds)) {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
 
-    // Check if thread already exists with exact same participants
-    const existingThread = await prisma.thread.findFirst({
+    // Verify all participants exist
+    const participants = await prisma.user.findMany({
       where: {
-        AND: [
-          {
-            participants: {
-              every: {
-                id: {
-                  in: [...participantIds, user.id]
-                }
-              }
-            }
-          },
-          {
-            participants: {
-              none: {
-                id: {
-                  notIn: [...participantIds, user.id]
-                }
-              }
-            }
-          }
-        ]
+        id: {
+          in: participantIds
+        }
       }
     });
 
-    if (existingThread) {
-      return NextResponse.json(existingThread);
+    if (participants.length !== participantIds.length) {
+      return NextResponse.json({ error: 'One or more participants not found' }, { status: 404 });
     }
 
-    // Create new thread
+    // Create thread with participants
     const thread = await prisma.thread.create({
       data: {
-        title,
+        name,
         participants: {
-          connect: [
-            { id: user.id },
-            ...participantIds.map((id: string) => ({ id }))
+          create: [
+            {
+              userId: user.id,
+              role: ParticipantRole.OWNER
+            },
+            ...participantIds.map((participantId: string) => ({
+              userId: participantId,
+              role: ParticipantRole.MEMBER
+            }))
           ]
         }
       },
       include: {
         participants: {
-          select: {
-            id: true,
-            username: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            profileImage: true
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                image: true
+              }
+            }
           }
         }
       }
     });
 
-    logger.debug('Thread created successfully', { threadId: thread.id });
+    logger.debug('Thread created successfully', { threadId: thread.id, userId: user.id });
     return NextResponse.json(thread);
-  } catch (error) {
-    logger.error('Error creating thread', error);
-    return new NextResponse('Internal Server Error', { status: 500 });
+  } catch (error: any) {
+    logger.error('Error creating thread:', error);
+    return NextResponse.json({ 
+      error: error?.message || 'Internal Server Error',
+      details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+    }, { status: 500 });
   }
 } 

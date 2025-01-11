@@ -5,46 +5,46 @@
 > **Priority**: Top-down, focusing on user-facing features first
 
 ## 1. Connection & Authentication 🔌
-- [x] Initial Connection Flow
-  - [x] Clean database state
-    - ✓ Schema updated with real-time features
-    - ✓ Test data seeded (Alice & Bob)
-    - ✓ Prisma Studio verified
-  - [x] Start server (`npm run dev`)
-    - ✓ Next.js running on :3000
-    - ✓ WebSocket server on :4000
-    - ✓ Concurrent execution working
-  - [x] Verify WebSocket connection in dev tools
-    - ✓ Connection established on :4000
-    - ✓ Status indicator visible (green dot)
-    - ✓ Test page functional
-    - ✓ Client connection confirmed
-  - [x] Confirm Clerk authentication redirect
-    - ✓ Middleware setup complete
-    - ✓ Auth error resolved
-    - ✓ Protected routes redirecting
-    - ✓ Public routes accessible
-  - [x] Validate session persistence
-    - ✓ Token refresh (15min/7d)
-    - ✓ Session timeout (24h)
-    - ✓ Multi-tab behavior
-    - ✓ Inactivity handling (30min)
-    - ✓ Max sessions (5)
+- [] ] Initial Connection Flow
+  - [ ] Clean database state
+    - [ ] Schema updated with real-time features
+    - [ ] Test data seeded (Alice & Bob)
+    - [ ] Prisma Studio verified
+  - [ ] Start server (`npm run dev`)
+    - [ ] Next.js running on :3000
+    - [ ] WebSocket server on :4000
+    - [ ] Concurrent execution working
+  - [ ] Verify WebSocket connection in dev tools
+    - [ ] Connection established on :4000
+    - [ ] Status indicator visible (green dot)
+    - [ ] Test page functional
+    - [ ] Client connection confirmed
+  - [ ] Confirm Clerk authentication redirect
+    - [ ] Middleware setup complete
+    - [ ] Auth error resolved
+    - [ ] Protected routes redirecting
+    - [ ] Public routes accessible
+  - [ ] Validate session persistence
+    - [ ] Token refresh (15min/7d)
+    - [ ] Session timeout (24h)
+    - [ ] Multi-tab behavior
+    - [ ] Inactivity handling (30min)
+    - [ ] Max sessions (5)
 
-- [x] Reconnection Scenarios
-  - [x] Test server restart recovery
-    - ✓ Auto-reconnection
-    - ✓ State recovery
-  - [x] Verify client reconnection after sleep
-    - ✓ Connection reestablished
-    - ✓ Session restored
-  - [x] Check state recovery after disconnect
-    - ✓ Message queue processed
-    - ✓ Presence status updated
-  - [x] Validate presence status sync
-    - ✓ Online/offline tracking
-    - ✓ Last seen timestamps
-    - ✓ Multi-device sync
+- [ ] Reconnection Scenarios
+  - [ ] Test server restart recovery
+    - [ ] Auto-reconnection
+    - [ ] State recovery
+  - [ ] Verify client reconnection after sleep
+    - [ ] Connection reestablished
+    - [ ] Session restored
+  - [ ] Check state recovery after disconnect
+    - [ ] Message queue processed
+    - [ ] Presence status updated
+  - [ ] Validate presence status sync
+    - [ ] Online/offline tracking
+    - [ ] Last seen timestamps
+    - [ ] Multi-device sync
 
 ## 2. Message Operations 💬
 - [ ] Basic Messaging
@@ -64,7 +64,27 @@
 ## 3. Thread Management 🗂️
 - [ ] Thread Operations
   - [ ] Create new thread
-  - [ ] Add participant (MEMBER role)
+    - [ ] Trust Boundaries
+      - [ ] Without auth (401) - System maintains integrity ✓
+      - [ ] With invalid auth token (401) - System rejects forgery ✓
+      - [ ] With valid auth token - System accepts request ✓
+      - [ ] As USER role - Creating safe spaces
+      - [ ] As GUEST role (403) - Respecting access levels
+      - [ ] As ADMIN role - Stewarding community
+    - [ ] Social Dynamics
+      - [ ] Invalid participants - Handling rejection
+      - [ ] Empty name - Identity requirement
+      - [ ] Participant limits - Community size
+      - [ ] Self-participant - Self-awareness
+    - [ ] Trust Hierarchy
+      - [ ] Creator gets OWNER - Leadership
+      - [ ] Participants get MEMBER - Belonging
+      - [ ] Permissions verified - Boundaries
+    - [ ] Community Isolation
+      - [ ] Participant visibility - Inner circle
+      - [ ] Non-participant access - Privacy
+
+- [ ] Add participant (MEMBER role)
   - [ ] Promote to ADMIN
   - [ ] Remove participant
   - [ ] Verify role permissions

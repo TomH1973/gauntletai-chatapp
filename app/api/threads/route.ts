@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma.js';
-import { getCurrentUser } from '@/lib/auth.js';
-import { logger } from '@/lib/logger.js';
+import { prisma } from '@/lib/prisma';
+import { auth } from '@clerk/nextjs/server';
+import { logger } from '@/lib/logger';
+import { ParticipantRole } from '@prisma/client';
 
 /**
  * @route GET /api/threads
@@ -12,9 +13,17 @@ import { logger } from '@/lib/logger.js';
  */
 export async function GET() {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
+    const { userId } = await auth();
+    if (!userId) {
       return new NextResponse('Unauthorized', { status: 401 });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId: userId }
+    });
+
+    if (!user) {
+      return new NextResponse('User not found', { status: 404 });
     }
 
     const threads = await prisma.thread.findMany({
@@ -31,11 +40,8 @@ export async function GET() {
             user: {
               select: {
                 id: true,
-                username: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-                profileImage: true
+                name: true,
+                image: true
               }
             }
           }
@@ -44,17 +50,29 @@ export async function GET() {
           take: 1,
           orderBy: {
             createdAt: 'desc'
+          },
+          select: {
+            id: true,
+            content: true,
+            createdAt: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                image: true
+              }
+            }
           }
         }
       },
       orderBy: {
-        lastMessageAt: 'desc'
+        updatedAt: 'desc'
       }
     });
 
     return NextResponse.json(threads);
   } catch (error) {
-    logger.error('Error fetching threads', error);
+    logger.error('Error fetching threads:', error);
     return new NextResponse('Internal Server Error', { status: 500 });
   }
 }
@@ -74,37 +92,54 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
+    const { userId } = await auth();
+    if (!userId) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    const { title, participantIds } = await request.json();
+    const user = await prisma.user.findUnique({
+      where: { clerkId: userId }
+    });
 
-    // Ensure the current user is included in participants
-    const uniqueParticipantIds = Array.from(new Set([...participantIds, user.id]));
+    if (!user) {
+      return new NextResponse('User not found', { status: 404 });
+    }
+
+    const body = await request.json();
+    const { name, participantIds } = body;
+
+    if (!name || !participantIds || !Array.isArray(participantIds)) {
+      return new NextResponse('Invalid request body', { status: 400 });
+    }
 
     // Verify all participants exist
     const participants = await prisma.user.findMany({
       where: {
         id: {
-          in: uniqueParticipantIds
+          in: participantIds
         }
       }
     });
 
-    if (participants.length !== uniqueParticipantIds.length) {
-      return new NextResponse('One or more participants not found', { status: 400 });
+    if (participants.length !== participantIds.length) {
+      return new NextResponse('One or more participants not found', { status: 404 });
     }
 
     // Create thread with participants
     const thread = await prisma.thread.create({
       data: {
-        title,
+        name,
         participants: {
-          create: uniqueParticipantIds.map(userId => ({
-            userId
-          }))
+          create: [
+            {
+              userId: user.id,
+              role: ParticipantRole.OWNER
+            },
+            ...participantIds.map((participantId: string) => ({
+              userId: participantId,
+              role: ParticipantRole.MEMBER
+            }))
+          ]
         }
       },
       include: {
@@ -113,11 +148,8 @@ export async function POST(request: Request) {
             user: {
               select: {
                 id: true,
-                username: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-                profileImage: true
+                name: true,
+                image: true
               }
             }
           }
@@ -128,7 +160,7 @@ export async function POST(request: Request) {
     logger.debug('Thread created successfully', { threadId: thread.id, userId: user.id });
     return NextResponse.json(thread);
   } catch (error) {
-    logger.error('Error creating thread', error);
+    logger.error('Error creating thread:', error);
     return new NextResponse('Internal Server Error', { status: 500 });
   }
 } 
