@@ -1,0 +1,162 @@
+name: Staging Pipeline
+
+on:
+  push:
+    branches: [ develop ]
+  pull_request:
+    branches: [ develop, main ]
+
+env:
+  NODE_VERSION: '18'
+  POSTGRES_VERSION: '15'
+  REDIS_VERSION: '7'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:${{ env.POSTGRES_VERSION }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: chatapp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:${{ env.REDIS_VERSION }}
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run linter
+        run: npm run lint
+        
+      - name: Run type check
+        run: npm run type-check
+        
+      - name: Run unit and integration tests
+        run: npm run test:ci
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chatapp_test
+          REDIS_URL: redis://localhost:6379
+          
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chatapp_test
+          REDIS_URL: redis://localhost:6379
+          
+      - name: Run visual regression tests
+        run: npm run test:visual
+        
+      - name: Run performance tests
+        run: npm run test:performance
+          
+      - name: Upload test coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage
+          path: coverage/
+          
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run SAST scan
+        uses: github/codeql-action/analyze@v2
+        with:
+          languages: javascript, typescript
+      
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+          
+      - name: Run container scan
+        uses: anchore/scan-action@v3
+        with:
+          image: "gauntletai-chatapp:staging"
+          fail-build: true
+          
+  build:
+    name: Build and Deploy to Staging
+    needs: [test, security]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+        
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/gauntletai-chatapp:staging
+            ${{ secrets.DOCKERHUB_USERNAME }}/gauntletai-chatapp:${{ github.sha }}-staging
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/gauntletai-chatapp:buildcache-staging
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/gauntletai-chatapp:buildcache-staging,mode=max
+          
+      - name: Deploy to staging
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd /opt/gauntletai-chatapp-staging
+            
+            # Store the current deployment for potential rollback
+            if [ -f docker-compose.yml ]; then
+              cp docker-compose.yml docker-compose.yml.backup
+              docker-compose pull
+              docker-compose down
+            fi
+            
+            # Deploy new version
+            docker-compose -f docker-compose.staging.yml up -d
+            
+            # Verify deployment
+            if ! curl -f http://localhost:3000/api/health; then
+              echo "Health check failed, rolling back..."
+              docker-compose -f docker-compose.yml.backup up -d
+              exit 1
+            fi
+            
+            # Cleanup
+            docker system prune -f 

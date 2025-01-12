@@ -1,0 +1,8 @@
+# Run full backup daily at 2 AM
+0 2 * * * /opt/chatapp/scripts/backup.sh
+
+# Archive WAL files every 15 minutes
+*/15 * * * * /opt/chatapp/scripts/archive-wal.sh
+
+# Verify and test restore weekly on Sunday at 3 AM
+0 3 * * 0 /opt/chatapp/scripts/test-restore.sh 

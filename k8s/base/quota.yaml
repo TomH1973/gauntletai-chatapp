@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: chatapp-quota
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "20"
+    services.loadbalancers: "1"
+    persistentvolumeclaims: "10"
+    services.nodeports: "0"
+    replicationcontrollers: "20" 
