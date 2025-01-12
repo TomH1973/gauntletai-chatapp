@@ -1,173 +1,235 @@
-# Chat API
+# API Documentation
 
-## Common Patterns
+## Core Concepts
 
 ### Authentication
-All endpoints require Clerk.js session token:
-```http
-Authorization: Bearer ${token}
+All protected routes use the `withAuth` wrapper from `lib/api.ts`:
+```typescript
+import { withAuth } from '@/lib/api';
+
+export const handler = withAuth(async (req, user) => {
+  // Handler implementation
+});
 ```
 
-### Error Responses
+### Input Validation
+All routes use Zod for input validation:
 ```typescript
-interface ErrorResponse {
-  code: ErrorCode;
-  message: string;
-  details?: any;
+import { z } from 'zod';
+
+const InputSchema = z.object({
+  field1: z.string(),
+  field2: z.number(),
+  // ...
+});
+
+export const POST = withAuth(async (req, user) => {
+  const result = InputSchema.safeParse(await req.json());
+  if (!result.success) {
+    return ApiResponse.error(ApiError.BadRequest, 400, result.error);
+  }
+  const data = result.data;
+  // Use validated data
+});
+```
+
+### Error Handling
+Consistent error responses across all endpoints:
+```typescript
+{
+  error: string;    // One of ApiError types
+  details?: any;    // Additional info in development
 }
 ```
+
+Available error types:
+- `Unauthorized`: Authentication failed
+- `NotFound`: Resource not found
+- `BadRequest`: Invalid input
+- `RateLimit`: Too many requests
+- `ServerError`: Internal error
 
 ### Rate Limiting
-- GET endpoints: 100 requests/minute
-- POST/PATCH/DELETE: 30 requests/minute
-- Headers: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
+- Global rate limit: 1000 requests per minute per user
+- Endpoint-specific limits where needed
+- Handled automatically by middleware
 
-## Messages API
-
-### GET /api/messages
-Retrieves thread messages with pagination.
-
-```typescript
-// Query
-{
-  threadId: string;    // Required
-  cursor?: string;     // Optional
-  limit?: number;      // Default: 50
-}
-
-// Response
-{
-  messages: Message[];
-  nextCursor?: string;
-  hasMore: boolean;
-}
-```
-
-### POST /api/messages
-Creates a new message.
-
-```typescript
-// Body
-{
-  content: string;     // Required
-  threadId: string;    // Required
-  parentId?: string;   // Optional
-  tempId?: string;     // Optional
-}
-
-// Response
-{
-  message: Message;
-  tempId?: string;
-}
-```
-
-### PATCH /api/messages/:id
-Updates a message.
-
-```typescript
-// Body
-{
-  content: string;     // Required
-}
-
-// Response
-{
-  message: Message;
-}
-```
-
-### DELETE /api/messages/:id
-Deletes a message.
-
-```typescript
-// Response
-{
-  success: boolean;
-  id: string;
-}
-```
-
-## Threads API
-
-### GET /api/threads
-Lists user's threads.
-
-```typescript
-// Query
-{
-  cursor?: string;     // Optional
-  limit?: number;      // Default: 20
-  status?: string;     // Optional
-}
-
-// Response
-{
-  threads: Thread[];
-  nextCursor?: string;
-  hasMore: boolean;
-}
-```
-
-### POST /api/threads
-Creates a new thread.
-
-```typescript
-// Body
-{
-  name?: string;           // Optional
-  participantIds: string[];// Required
-  initialMessage?: string; // Optional
-}
-
-// Response
-{
-  thread: Thread;
-  message?: Message;
-}
-```
-
-### PATCH /api/threads/:id
-Updates a thread.
-
-```typescript
-// Body
-{
-  name?: string;
-  status?: string;
-}
-
-// Response
-{
-  thread: Thread;
-}
-```
-
-### POST /api/threads/:id/participants
-Adds participants to a thread.
-
-```typescript
-// Body
-{
-  userIds: string[];
-}
-
-// Response
-{
-  participants: ThreadParticipant[];
-}
-```
-
-## Validation Rules
-
-### Messages
-- Content: 1-4000 characters
-- Thread ID: Valid UUID
-- Parent ID: Valid UUID or null
-- Temp ID: ≤100 characters
+## Endpoints
 
 ### Threads
-- Name: 1-100 characters
-- Max participants: 50
-- Valid user IDs required
-- Thread ID: Valid UUID 
+
+#### GET /api/threads
+List user's active threads.
+
+**Response**:
+```typescript
+{
+  id: string;
+  name: string;
+  participants: {
+    user: {
+      id: string;
+      name: string;
+      image: string;
+    };
+  }[];
+  messages: {
+    id: string;
+    content: string;
+    createdAt: string;
+    user: {
+      id: string;
+      name: string;
+      image: string;
+    };
+  }[];
+}[]
+```
+
+#### POST /api/threads
+Create or leave a thread.
+
+**Create Thread Request**:
+```typescript
+{
+  action: 'create';
+  name: string;
+  participantIds: string[];
+}
+```
+
+**Leave Thread Request**:
+```typescript
+{
+  action: 'leave';
+  threadId: string;
+}
+```
+
+### Messages
+
+#### GET /api/messages
+Get messages for a thread.
+
+**Query Parameters**:
+- `threadId`: string (required)
+- `cursor`: string (optional)
+- `limit`: number (optional, default: 50)
+
+#### POST /api/messages
+Send a message.
+
+**Request**:
+```typescript
+{
+  threadId: string;
+  content: string;
+  attachments?: {
+    type: 'image' | 'file';
+    url: string;
+  }[];
+}
+```
+
+### WebSocket Events
+
+#### Connection
+```typescript
+socket.on('connect', () => {
+  socket.emit('auth', { token: 'user-token' });
+});
+```
+
+#### Message Events
+- `message:new`: New message in thread
+- `message:update`: Message edited
+- `message:delete`: Message deleted
+- `typing:start`: User started typing
+- `typing:stop`: User stopped typing
+
+## Common Database Queries
+
+### Thread Participants
+```typescript
+include: CommonIncludes.threadParticipants
+```
+Returns:
+```typescript
+{
+  user: {
+    id: string;
+    name: string;
+    image: string;
+  };
+}[]
+```
+
+### Latest Message
+```typescript
+include: CommonIncludes.latestMessage
+```
+Returns:
+```typescript
+{
+  id: string;
+  content: string;
+  createdAt: string;
+  user: {
+    id: string;
+    name: string;
+    image: string;
+  };
+}
+```
+
+## Development Tools
+
+### API Testing
+```bash
+# Using curl
+curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/threads
+
+# Using the test suite
+npm test -- api/threads.test.ts
+```
+
+### WebSocket Testing
+```bash
+# Using wscat
+wscat -c ws://localhost:4000 -H "Authorization: Bearer $TOKEN"
+```
+
+## Security Considerations
+
+1. **Authentication**
+   - All routes require valid Clerk token
+   - WebSocket connections authenticated via headers
+   - Rate limiting per user
+
+2. **Input Validation**
+   - All inputs validated with Zod
+   - Strict TypeScript types
+   - SQL injection prevention via Prisma
+
+3. **Error Handling**
+   - No sensitive info in errors
+   - Detailed logs for debugging
+   - Rate limit information in headers
+
+## Deployment
+
+1. **Environment Variables**
+```env
+DATABASE_URL=postgresql://user:pass@host:5432/db
+REDIS_URL=redis://localhost:6379
+CLERK_SECRET_KEY=sk_...
+```
+
+2. **Health Checks**
+- `/api/health`: Basic health check
+- `/api/metrics`: Detailed metrics (protected)
+
+3. **Monitoring**
+- Request logging
+- Error tracking
+- Performance metrics 

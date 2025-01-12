@@ -1,34 +1,54 @@
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { auth, currentUser } from "@clerk/nextjs";
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
-    const { userId } = await auth();
+    const { userId } = auth();
     
     if (!userId) {
-      return new NextResponse('Unauthorized', { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({
+    const clerkUser = await currentUser();
+    
+    if (!clerkUser) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    // Get or create user in our database
+    const user = await prisma.user.upsert({
       where: { clerkId: userId },
+      update: {
+        email: clerkUser.emailAddresses[0]?.emailAddress || "",
+        name: `${clerkUser.firstName} ${clerkUser.lastName}`.trim(),
+        image: clerkUser.imageUrl,
+      },
+      create: {
+        clerkId: userId,
+        email: clerkUser.emailAddresses[0]?.emailAddress || "",
+        name: `${clerkUser.firstName} ${clerkUser.lastName}`.trim(),
+        image: clerkUser.imageUrl,
+        status: "OFFLINE"
+      },
       select: {
         id: true,
+        clerkId: true,
         email: true,
         name: true,
         image: true,
+        status: true,
         createdAt: true,
         updatedAt: true
       }
     });
 
-    if (!user) {
-      return new NextResponse('User not found', { status: 404 });
-    }
-
-    return NextResponse.json(user);
+    return NextResponse.json({ user });
   } catch (error) {
-    console.error('Get current user error:', error);
-    return new NextResponse('Internal Server Error', { status: 500 });
+    console.error("Auth check error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 } 

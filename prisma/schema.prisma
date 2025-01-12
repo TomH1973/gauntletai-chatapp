@@ -35,6 +35,12 @@ enum MessageType {
   FILE
 }
 
+enum SystemRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
 // Core user model with Clerk integration
 model User {
   id            String    @id @default(cuid())
@@ -43,6 +49,7 @@ model User {
   name          String    // Required for display
   image         String    // Required for avatar
   status        UserStatus @default(OFFLINE)
+  systemRole    SystemRole @default(MEMBER)
   lastActiveAt  DateTime?
   lastSeenAt    DateTime?
   
@@ -61,6 +68,7 @@ model User {
   @@index([clerkId])
   @@index([email])
   @@index([status])
+  @@index([systemRole])
 }
 
 // Real-time presence tracking

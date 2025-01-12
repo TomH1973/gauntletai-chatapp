@@ -1,166 +1,102 @@
-import { NextResponse } from 'next/server';
+import { withAuth, ApiResponse, ApiError, CommonIncludes } from '@/lib/api';
 import { prisma } from '@/lib/prisma';
-import { auth } from '@clerk/nextjs/server';
-import { logger } from '@/lib/logger';
 import { ParticipantRole } from '@prisma/client';
+import { z } from 'zod';
+import type { AuthenticatedUser } from '@/lib/api';
 
-/**
- * @route GET /api/threads
- * @description Retrieves all threads where the current user is a participant
- * 
- * @returns {Promise<NextResponse>} JSON response containing threads with participants and latest message
- * @throws {401} If user is not authenticated
- */
-export async function GET() {
-  try {
-    const { userId } = await auth();
-    if (!userId) {
-      return new NextResponse('Unauthorized', { status: 401 });
-    }
+// Input validation schemas
+const CreateThreadSchema = z.object({
+  action: z.literal('create'),
+  name: z.string().min(1),
+  participantIds: z.array(z.string().min(1))
+});
 
-    const user = await prisma.user.findUnique({
-      where: { clerkId: userId }
-    });
+const LeaveThreadSchema = z.object({
+  action: z.literal('leave'),
+  threadId: z.string().min(1)
+});
 
-    if (!user) {
-      return new NextResponse('User not found', { status: 404 });
-    }
+const ThreadActionSchema = z.discriminatedUnion('action', [
+  CreateThreadSchema,
+  LeaveThreadSchema
+]);
 
-    const threads = await prisma.thread.findMany({
+// GET /api/threads - List user's active threads
+export const GET = withAuth(async (req, user: AuthenticatedUser) => {
+  const threads = await prisma.thread.findMany({
+    where: {
+      participants: {
+        some: {
+          userId: user.id,
+          leftAt: null
+        }
+      }
+    },
+    include: {
+      participants: CommonIncludes.threadParticipants,
+      messages: CommonIncludes.latestMessage
+    },
+    orderBy: { updatedAt: 'desc' }
+  });
+
+  return ApiResponse.success(threads);
+});
+
+// POST /api/threads - Create or leave thread
+export const POST = withAuth(async (req, user: AuthenticatedUser) => {
+  const body = await req.json();
+  
+  // Validate request body
+  const result = ThreadActionSchema.safeParse(body);
+  if (!result.success) {
+    return ApiResponse.error(ApiError.BadRequest, 400, result.error);
+  }
+  
+  const data = result.data;
+  
+  // Handle thread leaving
+  if (data.action === 'leave') {
+    await prisma.threadParticipant.update({
       where: {
-        participants: {
-          some: {
-            userId: user.id
-          }
+        userId_threadId: {
+          userId: user.id,
+          threadId: data.threadId
         }
       },
-      include: {
-        participants: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                image: true
-              }
-            }
-          }
-        },
-        messages: {
-          take: 1,
-          orderBy: {
-            createdAt: 'desc'
+      data: { leftAt: new Date() }
+    });
+    return ApiResponse.success({ success: true });
+  }
+  
+  // Handle thread creation
+  const participants = await prisma.user.findMany({
+    where: { id: { in: data.participantIds } }
+  });
+
+  if (participants.length !== data.participantIds.length) {
+    return ApiResponse.error(ApiError.NotFound, 404, 'One or more participants not found');
+  }
+
+  const thread = await prisma.thread.create({
+    data: {
+      name: data.name,
+      participants: {
+        create: [
+          {
+            userId: user.id,
+            role: ParticipantRole.OWNER
           },
-          select: {
-            id: true,
-            content: true,
-            createdAt: true,
-            user: {
-              select: {
-                id: true,
-                name: true,
-                image: true
-              }
-            }
-          }
-        }
-      },
-      orderBy: {
-        updatedAt: 'desc'
+          ...data.participantIds.map(id => ({
+            userId: id,
+            role: ParticipantRole.MEMBER
+          }))
+        ]
       }
-    });
-
-    return NextResponse.json(threads);
-  } catch (error) {
-    logger.error('Error fetching threads:', error);
-    return new NextResponse('Internal Server Error', { status: 500 });
-  }
-}
-
-/**
- * @route POST /api/threads
- * @description Creates a new thread with specified participants
- * 
- * @param {Object} request - Next.js request object
- * @param {Object} request.body - Request body
- * @param {string} request.body.title - Thread title
- * @param {string[]} request.body.participantIds - Array of user IDs to add as participants
- * 
- * @returns {Promise<NextResponse>} JSON response containing the created thread
- * @throws {401} If user is not authenticated
- * @throws {400} If one or more participants are not found
- */
-export async function POST(request: Request) {
-  try {
-    const { userId } = await auth();
-    if (!userId) {
-      return new NextResponse('Unauthorized', { status: 401 });
+    },
+    include: {
+      participants: CommonIncludes.threadParticipants
     }
+  });
 
-    const user = await prisma.user.findUnique({
-      where: { clerkId: userId }
-    });
-
-    if (!user) {
-      return new NextResponse('User not found', { status: 404 });
-    }
-
-    const body = await request.json();
-    const { name, participantIds } = body;
-
-    if (!name || !participantIds || !Array.isArray(participantIds)) {
-      return new NextResponse('Invalid request body', { status: 400 });
-    }
-
-    // Verify all participants exist
-    const participants = await prisma.user.findMany({
-      where: {
-        id: {
-          in: participantIds
-        }
-      }
-    });
-
-    if (participants.length !== participantIds.length) {
-      return new NextResponse('One or more participants not found', { status: 404 });
-    }
-
-    // Create thread with participants
-    const thread = await prisma.thread.create({
-      data: {
-        name,
-        participants: {
-          create: [
-            {
-              userId: user.id,
-              role: ParticipantRole.OWNER
-            },
-            ...participantIds.map((participantId: string) => ({
-              userId: participantId,
-              role: ParticipantRole.MEMBER
-            }))
-          ]
-        }
-      },
-      include: {
-        participants: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                image: true
-              }
-            }
-          }
-        }
-      }
-    });
-
-    logger.debug('Thread created successfully', { threadId: thread.id, userId: user.id });
-    return NextResponse.json(thread);
-  } catch (error) {
-    logger.error('Error creating thread:', error);
-    return new NextResponse('Internal Server Error', { status: 500 });
-  }
-} 
+  return ApiResponse.success(thread);
+}); 

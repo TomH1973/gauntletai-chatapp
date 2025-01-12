@@ -1,0 +1,27 @@
+# Ignore everything
+*
+
+# Allow specific files and directories
+!package.json
+!package-lock.json
+!tsconfig.json
+!next.config.js
+!postcss.config.js
+!tailwind.config.js
+!app/
+!components/
+!lib/
+!public/
+!styles/
+!prisma/
+!server.ts
+
+# Always ignore these
+.git
+.env*
+node_modules
+.next
+coverage
+dist
+build
+*.log 
