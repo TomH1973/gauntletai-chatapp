@@ -1,141 +1,149 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, ParticipantRole } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  // Clean existing data
-  await prisma.$transaction([
-    prisma.messageReaction.deleteMany(),
-    prisma.messageEdit.deleteMany(),
-    prisma.message.deleteMany(),
-    prisma.threadParticipant.deleteMany(),
-    prisma.thread.deleteMany(),
-    prisma.user.deleteMany(),
-  ]);
+  // Create users
+  const alice = await prisma.user.create({
+    data: {
+      email: 'alice@example.com',
+      name: 'Alice Johnson',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=alice',
+      clerkId: 'user_mock_alice'
+    }
+  });
 
-  // Create test users
-  const users = await Promise.all([
-    prisma.user.create({
-      data: {
-        email: 'admin@example.com',
-        username: 'admin',
-        firstName: 'Admin',
-        lastName: 'User',
-        role: 'ADMIN',
-        profileImage: 'https://api.dicebear.com/7.x/avatars/svg?seed=admin',
-      },
-    }),
-    prisma.user.create({
-      data: {
-        email: 'mod@example.com',
-        username: 'moderator',
-        firstName: 'Moderator',
-        lastName: 'User',
-        role: 'MODERATOR',
-        profileImage: 'https://api.dicebear.com/7.x/avatars/svg?seed=mod',
-      },
-    }),
-    prisma.user.create({
-      data: {
-        email: 'user1@example.com',
-        username: 'user1',
-        firstName: 'Test',
-        lastName: 'User1',
-        role: 'USER',
-        profileImage: 'https://api.dicebear.com/7.x/avatars/svg?seed=user1',
-      },
-    }),
-    prisma.user.create({
-      data: {
-        email: 'user2@example.com',
-        username: 'user2',
-        firstName: 'Test',
-        lastName: 'User2',
-        role: 'USER',
-        profileImage: 'https://api.dicebear.com/7.x/avatars/svg?seed=user2',
-      },
-    }),
-  ]);
+  const bob = await prisma.user.create({
+    data: {
+      email: 'bob@example.com',
+      name: 'Bob Smith',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=bob',
+      clerkId: 'user_mock_bob'
+    }
+  });
 
-  // Create test threads
-  const threads = await Promise.all([
-    prisma.thread.create({
-      data: {
-        title: 'Welcome Thread',
-        participants: {
-          create: users.map((user, index) => ({
-            userId: user.id,
-            role: index === 0 ? 'OWNER' : 'MEMBER',
-          })),
-        },
-      },
-    }),
-    prisma.thread.create({
-      data: {
-        title: 'Development Discussion',
-        participants: {
-          create: [
-            { userId: users[0].id, role: 'OWNER' },
-            { userId: users[1].id, role: 'ADMIN' },
-            { userId: users[2].id, role: 'MEMBER' },
-          ],
-        },
-      },
-    }),
-  ]);
+  const carol = await prisma.user.create({
+    data: {
+      email: 'carol@example.com',
+      name: 'Carol Williams',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=carol',
+      clerkId: 'user_mock_carol'
+    }
+  });
 
-  // Create test messages
-  const messages = await Promise.all([
-    prisma.message.create({
-      data: {
-        content: 'Welcome to the chat application! 👋',
-        userId: users[0].id,
-        threadId: threads[0].id,
-        status: 'DELIVERED',
-      },
-    }),
-    prisma.message.create({
-      data: {
-        content: 'Thanks for having me here!',
-        userId: users[2].id,
-        threadId: threads[0].id,
-        status: 'DELIVERED',
-      },
-    }),
-    prisma.message.create({
-      data: {
-        content: 'Let\'s discuss the new features',
-        userId: users[0].id,
-        threadId: threads[1].id,
-        status: 'DELIVERED',
-      },
-    }),
-  ]);
+  const dave = await prisma.user.create({
+    data: {
+      email: 'dave@example.com',
+      name: 'Dave Brown',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=dave',
+      clerkId: 'user_mock_dave'
+    }
+  });
 
-  // Add some reactions
-  await Promise.all([
-    prisma.messageReaction.create({
-      data: {
-        messageId: messages[0].id,
-        userId: users[1].id,
-        emoji: '👍',
-      },
-    }),
-    prisma.messageReaction.create({
-      data: {
-        messageId: messages[0].id,
-        userId: users[2].id,
-        emoji: '❤️',
-      },
-    }),
-  ]);
+  // Create API discussion thread
+  const apiThread = await prisma.thread.create({
+    data: {
+      name: 'API Endpoints Discussion',
+      participants: {
+        create: [
+          {
+            userId: alice.id,
+            role: ParticipantRole.OWNER
+          },
+          {
+            userId: bob.id,
+            role: ParticipantRole.MEMBER
+          },
+          {
+            userId: carol.id,
+            role: ParticipantRole.MEMBER
+          }
+        ]
+      }
+    }
+  });
 
-  console.log('Seed data created successfully');
+  // Create messages in API thread
+  const question = await prisma.message.create({
+    data: {
+      content: 'What authentication method should we use for the API endpoints?',
+      userId: alice.id,
+      threadId: apiThread.id
+    }
+  });
+
+  const answer1 = await prisma.message.create({
+    data: {
+      content: 'I suggest using JWT tokens with refresh token rotation for security.',
+      userId: bob.id,
+      threadId: apiThread.id,
+      parentId: question.id
+    }
+  });
+
+  const answer2 = await prisma.message.create({
+    data: {
+      content: 'Good idea. We should also implement rate limiting and request validation.',
+      userId: carol.id,
+      threadId: apiThread.id,
+      parentId: question.id
+    }
+  });
+
+  // Create project timeline thread
+  const projectThread = await prisma.thread.create({
+    data: {
+      name: 'Project Timeline',
+      participants: {
+        create: [
+          {
+            userId: dave.id,
+            role: ParticipantRole.OWNER
+          },
+          {
+            userId: bob.id,
+            role: ParticipantRole.MEMBER
+          },
+          {
+            userId: carol.id,
+            role: ParticipantRole.MEMBER
+          }
+        ]
+      }
+    }
+  });
+
+  // Create messages in project thread
+  const projectKickoff = await prisma.message.create({
+    data: {
+      content: 'Here\'s our proposed timeline for the next quarter:',
+      userId: dave.id,
+      threadId: projectThread.id
+    }
+  });
+
+  const timeline = await prisma.message.create({
+    data: {
+      content: '1. API Design & Documentation (2 weeks)\n2. Core Backend Implementation (4 weeks)\n3. Frontend Development (3 weeks)\n4. Testing & Bug Fixes (2 weeks)\n5. Deployment & Launch (1 week)',
+      userId: dave.id,
+      threadId: projectThread.id,
+      parentId: projectKickoff.id
+    }
+  });
+
+  const feedback = await prisma.message.create({
+    data: {
+      content: 'Looks good! We should add some buffer time for unexpected issues.',
+      userId: bob.id,
+      threadId: projectThread.id,
+      parentId: projectKickoff.id
+    }
+  });
 }
 
 main()
   .catch((e) => {
-    console.error('Error seeding data:', e);
+    console.error(e);
     process.exit(1);
   })
   .finally(async () => {

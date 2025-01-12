@@ -2,10 +2,10 @@ import { useState, useRef, useEffect } from 'react';
 import { useSocket } from '@/hooks/useSocket';
 import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Send, Loader2, PaperclipIcon } from 'lucide-react';
 import { ErrorCode, ERROR_MESSAGES } from '@/lib/errors';
 import { cn } from '@/lib/utils';
+import { RichTextEditor } from './RichTextEditor';
 
 const MAX_MESSAGE_LENGTH = 4000;
 const MAX_ATTACHMENTS = 10;
@@ -119,8 +119,8 @@ export function MessageComposer({
     setAttachments(prev => [...prev, ...validFiles].slice(0, MAX_ATTACHMENTS));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!validateMessage() || isSubmitting) return;
 
     setIsSubmitting(true);
@@ -188,16 +188,15 @@ export function MessageComposer({
       )}
 
       <div className="flex items-end gap-2">
-        <Textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="Type a message..."
-          className={cn(
-            "min-h-[80px] max-h-[300px] flex-1",
-            error && "border-destructive"
-          )}
-          disabled={disabled || isSubmitting}
-        />
+        <div className="flex-1">
+          <RichTextEditor
+            value={content}
+            onChange={setContent}
+            onSubmit={handleSubmit}
+            disabled={disabled || isSubmitting}
+            className={cn(error && "border-destructive")}
+          />
+        </div>
         <div className="flex flex-col gap-2">
           <Button
             type="button"

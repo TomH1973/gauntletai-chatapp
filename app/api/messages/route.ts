@@ -1,159 +1,166 @@
-import { auth } from "@clerk/nextjs";
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { messageSchema, validateRequest, hasPermission, SystemRole } from "@/lib/validation";
-import { Prisma } from "@prisma/client";
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import { prisma } from '@/lib/prisma';
+import { ApiResponse, withAuth, withErrorHandling, ErrorCode } from '@/lib/api';
+
+// Input validation schema
+const messageSchema = z.object({
+  content: z.string().min(1).max(5000),
+  threadId: z.string().min(1),
+  parentId: z.string().optional(),
+});
 
 export async function POST(req: Request) {
-  try {
-    const { userId } = auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Get user with role
-    const user = await prisma.user.findUnique({
-      where: { clerkId: userId },
-      select: {
-        id: true,
-        systemRole: true
+  return withErrorHandling(async () => {
+    return withAuth(async (userId) => {
+      // Validate input
+      const body = await req.json();
+      const result = messageSchema.safeParse(body);
+      
+      if (!result.success) {
+        return ApiResponse.validationError({
+          field: result.error.errors[0]?.path.join('.'),
+          reason: result.error.errors[0]?.message
+        });
       }
-    });
+      
+      const { content, threadId, parentId } = result.data;
 
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    // Validate request body
-    const body = await req.json();
-    const validation = await validateRequest(messageSchema, body);
-    
-    if (!validation.success) {
-      return NextResponse.json({ error: validation.error }, { status: 400 });
-    }
-
-    const { content, threadId, parentId, type = "TEXT", metadata } = validation.data;
-
-    // Check thread participation
-    const participant = await prisma.threadParticipant.findUnique({
-      where: {
-        userId_threadId: {
-          userId: user.id,
-          threadId
-        }
-      }
-    });
-
-    const userRole = user.systemRole as SystemRole;
-    if (!participant && !hasPermission(userRole, SystemRole.ADMIN)) {
-      return NextResponse.json(
-        { error: "Not a thread participant" },
-        { status: 403 }
-      );
-    }
-
-    // Create message
-    const message = await prisma.message.create({
-      data: {
-        content,
-        type,
-        metadata: metadata ?? Prisma.JsonNull,
-        threadId,
-        userId: user.id,
-        parentId,
-        status: "SENT"
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            image: true
+      // Check thread exists and user has access
+      const thread = await prisma.thread.findFirst({
+        where: {
+          id: threadId,
+          participants: {
+            some: {
+              userId
+            }
           }
         }
-      }
-    });
+      });
 
-    return NextResponse.json({ message });
-  } catch (error) {
-    console.error("Create message error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
+      if (!thread) {
+        return ApiResponse.notFound({
+          reason: 'Thread not found or you do not have access',
+          help: 'Verify the thread ID and your access permissions'
+        });
+      }
+
+      // Create message
+      const message = await prisma.message.create({
+        data: {
+          content,
+          threadId,
+          userId,
+          parentId,
+          status: "SENT"
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              image: true
+            }
+          }
+        }
+      });
+
+      return ApiResponse.success({ message });
+    });
+  }, (error) => {
+    // Custom error mapping
+    if (error instanceof z.ZodError) {
+      return {
+        error: {
+          code: ErrorCode.VALIDATION_ERROR,
+          message: 'Invalid message format',
+          details: {
+            field: error.errors[0]?.path.join('.'),
+            reason: error.errors[0]?.message
+          },
+          requestId: ''  // Will be filled by ApiResponse
+        }
+      };
+    }
+    
+    // Let the default error handler handle other errors
+    throw error;
+  });
 }
 
 export async function GET(req: Request) {
-  try {
-    const { userId } = auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(req.url);
-    const threadId = searchParams.get("threadId");
-
-    if (!threadId) {
-      return NextResponse.json({ error: "Thread ID required" }, { status: 400 });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { clerkId: userId },
-      select: {
-        id: true,
-        systemRole: true
+  return withErrorHandling(async () => {
+    return withAuth(async (userId) => {
+      const { searchParams } = new URL(req.url);
+      const threadId = searchParams.get('threadId');
+      const limit = parseInt(searchParams.get('limit') || '50');
+      const before = searchParams.get('before');
+      
+      if (!threadId) {
+        return ApiResponse.validationError({
+          field: 'threadId',
+          reason: 'Thread ID is required'
+        });
       }
-    });
 
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    // Check thread participation or admin status
-    const participant = await prisma.threadParticipant.findUnique({
-      where: {
-        userId_threadId: {
-          userId: user.id,
-          threadId
-        }
-      }
-    });
-
-    const userRole = user.systemRole as SystemRole;
-    if (!participant && !hasPermission(userRole, SystemRole.ADMIN)) {
-      return NextResponse.json(
-        { error: "Not a thread participant" },
-        { status: 403 }
-      );
-    }
-
-    const messages = await prisma.message.findMany({
-      where: {
-        threadId,
-        deletedAt: null
-      },
-      orderBy: {
-        createdAt: "desc"
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            image: true
+      // Verify thread access
+      const thread = await prisma.thread.findFirst({
+        where: {
+          id: threadId,
+          participants: {
+            some: {
+              userId
+            }
           }
         }
-      },
-      take: 50
-    });
+      });
 
-    return NextResponse.json({ messages });
-  } catch (error) {
-    console.error("Get messages error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
+      if (!thread) {
+        return ApiResponse.notFound({
+          reason: 'Thread not found or you do not have access',
+          help: 'Verify the thread ID and your access permissions'
+        });
+      }
+
+      // Get messages with pagination
+      const messages = await prisma.message.findMany({
+        where: {
+          threadId,
+          ...(before ? {
+            createdAt: {
+              lt: new Date(before)
+            }
+          } : {})
+        },
+        take: limit,
+        orderBy: {
+          createdAt: 'desc'
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              image: true
+            }
+          }
+        }
+      });
+
+      // Get total count for pagination
+      const total = await prisma.message.count({
+        where: {
+          threadId
+        }
+      });
+
+      return ApiResponse.success({
+        messages,
+        pagination: {
+          total,
+          hasMore: messages.length === limit
+        }
+      });
+    });
+  });
 } 

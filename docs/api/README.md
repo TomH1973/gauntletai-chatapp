@@ -46,6 +46,7 @@ GET /threads
 Query Parameters:
 - `limit` (optional): Number of threads to return (default: 20)
 - `cursor` (optional): Cursor for pagination
+- `q` (optional): Search query to filter threads by title or message content
 
 Response:
 ```json

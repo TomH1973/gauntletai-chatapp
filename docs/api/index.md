@@ -17,7 +17,12 @@ Authorization: Bearer <token>
 
 #### GET /api/threads
 List user's threads
-- Query Parameters: `PaginationParams & ThreadFilters`
+- Query Parameters: 
+  ```typescript
+  interface ThreadListParams extends PaginationParams {
+    q?: string;  // Search query to filter threads by title or message content
+  }
+  ```
 - Response: `ApiResponse<Thread[]>`
 
 #### POST /api/threads

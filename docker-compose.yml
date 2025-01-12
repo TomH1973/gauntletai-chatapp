@@ -4,21 +4,18 @@ services:
   app:
     build:
       context: .
+      dockerfile: Dockerfile
       target: development
     volumes:
-      - type: bind
-        source: .
-        target: /app
-      - type: volume
-        source: node_modules
-        target: /app/node_modules
+      - .:/app:delegated
+      - app_node_modules:/app/node_modules
+      - app_next:/app/.next
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/chatapp
-      - NEXT_PUBLIC_APP_URL=http://localhost:3000
-      - NEXT_PUBLIC_SOCKET_URL=http://localhost:4000
-    command: sh -c "npx prisma generate && npm run dev"
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/chatapp?schema=public
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=development
     depends_on:
       postgres:
         condition: service_healthy
@@ -29,29 +26,30 @@ services:
   websocket:
     build:
       context: .
+      dockerfile: Dockerfile.websocket
       target: development
     volumes:
-      - type: bind
-        source: .
-        target: /app
-      - type: volume
-        source: node_modules
-        target: /app/node_modules
+      - .:/app:delegated
+      - websocket_node_modules:/app/node_modules
     ports:
-      - "4000:4000"
+      - "3002:3001"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/chatapp
-    command: sh -c "npx prisma generate && node server.ts"
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/chatapp?schema=public
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=development
     depends_on:
-      - app
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   # Database
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: chatapp
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=chatapp
     ports:
       - "5432:5432"
     volumes:
@@ -78,43 +76,41 @@ services:
   # Prometheus for metrics collection
   prometheus:
     image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 3
+      retries: 5
 
   # Grafana for visualization
   grafana:
     image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
     ports:
       - "3001:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 3
+      retries: 5
 
 volumes:
   postgres_data:
   redis_data:
   prometheus_data:
   grafana_data:
-  node_modules: 
+  app_node_modules:
+  app_next:
+  websocket_node_modules: 

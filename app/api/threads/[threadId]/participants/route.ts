@@ -1,94 +1,63 @@
+import { auth as getAuth } from '@clerk/nextjs';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getSession } from '@/lib/auth';
-import { ParticipantRole } from '@prisma/client';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { threadId: string } }
-) {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const participants = await prisma.threadParticipant.findMany({
-      where: { threadId: params.threadId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            username: true,
-            profileImage: true,
-          },
-        },
-      },
-    });
-
-    return NextResponse.json(participants);
-  } catch (error) {
-    console.error('Error fetching participants:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
+// Define ThreadRole enum since it's not exported from @prisma/client
+enum ThreadRole {
+  OWNER = 'OWNER',
+  ADMIN = 'ADMIN',
+  MEMBER = 'MEMBER'
 }
 
+// Helper to check if user has required role
+async function checkUserRole(threadId: string, userId: string, requiredRoles: ThreadRole[]) {
+  const participant = await prisma.threadParticipant.findFirst({
+    where: {
+      threadId,
+      userId,
+    }
+  });
+
+  return participant && requiredRoles.includes(participant.role as ThreadRole);
+}
+
+// Add participant to thread
 export async function POST(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: { threadId: string } }
 ) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const session = await getAuth();
+    if (!session?.userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { userId, role = ParticipantRole.MEMBER } = await req.json();
+    const { threadId } = params;
+    const { userId, role } = await request.json();
 
-    // Check if the current user has permission to add participants
-    const currentParticipant = await prisma.threadParticipant.findUnique({
-      where: {
-        threadId_userId: {
-          threadId: params.threadId,
-          userId: session.user.id,
-        },
-      },
-    });
+    // Check if current user is owner/admin
+    const hasPermission = await checkUserRole(
+      threadId,
+      session.userId,
+      [ThreadRole.OWNER, ThreadRole.ADMIN]
+    );
 
-    if (!currentParticipant || currentParticipant.role === ParticipantRole.MEMBER) {
-      return NextResponse.json(
-        { error: 'Forbidden' },
-        { status: 403 }
-      );
+    if (!hasPermission) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const participant = await prisma.threadParticipant.create({
       data: {
-        threadId: params.threadId,
         userId,
-        role,
+        threadId,
+        role
       },
       include: {
-        user: {
-          select: {
-            id: true,
-            username: true,
-            profileImage: true,
-          },
-        },
-      },
+        user: true
+      }
     });
 
-    return NextResponse.json(participant);
+    return NextResponse.json(participant, { status: 201 });
   } catch (error) {
     console.error('Error adding participant:', error);
     return NextResponse.json(
@@ -98,78 +67,62 @@ export async function POST(
   }
 }
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { threadId: string } }
+// Update participant role
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { threadId: string; userId: string } }
 ) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const session = await getAuth();
+    if (!session?.userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { userId } = await req.json();
+    const { threadId, userId } = params;
+    const { role } = await request.json();
 
-    // Check if the current user has permission to remove participants
-    const currentParticipant = await prisma.threadParticipant.findUnique({
+    // Check if current user is owner/admin
+    const hasPermission = await checkUserRole(
+      threadId,
+      session.userId,
+      [ThreadRole.OWNER, ThreadRole.ADMIN]
+    );
+
+    if (!hasPermission) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Check if target user is owner
+    const targetUser = await prisma.threadParticipant.findFirst({
       where: {
-        threadId_userId: {
-          threadId: params.threadId,
-          userId: session.user.id,
-        },
-      },
+        threadId,
+        userId
+      }
     });
 
-    if (!currentParticipant || currentParticipant.role === ParticipantRole.MEMBER) {
+    if (targetUser?.role === ThreadRole.OWNER) {
       return NextResponse.json(
-        { error: 'Forbidden' },
+        { error: 'Cannot modify owner role' },
         { status: 403 }
       );
     }
 
-    // Don't allow removing the last owner
-    if (userId !== session.user.id) {
-      const targetParticipant = await prisma.threadParticipant.findUnique({
-        where: {
-          threadId_userId: {
-            threadId: params.threadId,
-            userId,
-          },
-        },
-      });
-
-      if (targetParticipant?.role === ParticipantRole.OWNER) {
-        const ownerCount = await prisma.threadParticipant.count({
-          where: {
-            threadId: params.threadId,
-            role: ParticipantRole.OWNER,
-          },
-        });
-
-        if (ownerCount <= 1) {
-          return NextResponse.json(
-            { error: 'Cannot remove the last owner' },
-            { status: 400 }
-          );
-        }
-      }
-    }
-
-    await prisma.threadParticipant.delete({
+    const participant = await prisma.threadParticipant.update({
       where: {
-        threadId_userId: {
-          threadId: params.threadId,
+        userId_threadId: {
           userId,
-        },
+          threadId
+        }
       },
+      data: { role },
+      include: {
+        user: true
+      }
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json(participant);
   } catch (error) {
-    console.error('Error removing participant:', error);
+    console.error('Error updating participant:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -177,88 +130,57 @@ export async function DELETE(
   }
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { threadId: string } }
+// Remove participant
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { threadId: string; userId: string } }
 ) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const session = await getAuth();
+    if (!session?.userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { userId, role } = await req.json();
+    const { threadId, userId } = params;
 
-    // Check if the current user has permission to update participant roles
-    const currentParticipant = await prisma.threadParticipant.findUnique({
+    // Check if current user is owner/admin
+    const hasPermission = await checkUserRole(
+      threadId,
+      session.userId,
+      [ThreadRole.OWNER, ThreadRole.ADMIN]
+    );
+
+    if (!hasPermission) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Check if target user is owner
+    const targetUser = await prisma.threadParticipant.findFirst({
       where: {
-        threadId_userId: {
-          threadId: params.threadId,
-          userId: session.user.id,
-        },
-      },
+        threadId,
+        userId
+      }
     });
 
-    if (!currentParticipant || currentParticipant.role !== ParticipantRole.OWNER) {
+    if (targetUser?.role === ThreadRole.OWNER) {
       return NextResponse.json(
-        { error: 'Forbidden' },
+        { error: 'Cannot remove owner' },
         { status: 403 }
       );
     }
 
-    // Don't allow removing the last owner
-    if (role !== ParticipantRole.OWNER) {
-      const ownerCount = await prisma.threadParticipant.count({
-        where: {
-          threadId: params.threadId,
-          role: ParticipantRole.OWNER,
-        },
-      });
-
-      if (ownerCount <= 1) {
-        const targetParticipant = await prisma.threadParticipant.findUnique({
-          where: {
-            threadId_userId: {
-              threadId: params.threadId,
-              userId,
-            },
-          },
-        });
-
-        if (targetParticipant?.role === ParticipantRole.OWNER) {
-          return NextResponse.json(
-            { error: 'Cannot remove the last owner' },
-            { status: 400 }
-          );
+    await prisma.threadParticipant.delete({
+      where: {
+        userId_threadId: {
+          userId,
+          threadId
         }
       }
-    }
-
-    const participant = await prisma.threadParticipant.update({
-      where: {
-        threadId_userId: {
-          threadId: params.threadId,
-          userId,
-        },
-      },
-      data: { role },
-      include: {
-        user: {
-          select: {
-            id: true,
-            username: true,
-            profileImage: true,
-          },
-        },
-      },
     });
 
-    return NextResponse.json(participant);
+    return new NextResponse(null, { status: 204 });
   } catch (error) {
-    console.error('Error updating participant role:', error);
+    console.error('Error removing participant:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

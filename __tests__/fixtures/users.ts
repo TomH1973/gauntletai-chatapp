@@ -1,40 +1,55 @@
-import { User } from '@/types';
+export interface MockUser {
+  id: string;
+  name: string;
+  username: string;
+  email: string;
+  clerkId: string;
+  imageUrl: string;
+  createdAt: Date;
+  updatedAt: Date;
+  lastLoginAt: Date;
+  isActive: boolean;
+  metadata?: Record<string, any>;
+}
 
-export const testUsers: Record<string, User> = {
-  alice: {
-    id: 'user-alice-id',
-    username: 'Alice Smith',
+export const mockUsers: MockUser[] = [
+  {
+    id: 'user-1',
+    name: 'Alice Smith',
+    username: 'alice',
     email: 'alice@example.com',
-    firstName: 'Alice',
-    lastName: 'Smith',
+    clerkId: 'clerk_alice',
     imageUrl: 'https://example.com/alice.jpg',
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),
-    lastLoginAt: new Date('2024-01-09T12:00:00Z'),
-    isActive: true
+    lastLoginAt: new Date('2024-01-01T00:00:00Z'),
+    isActive: true,
+    metadata: {},
   },
-  bob: {
-    id: 'user-bob-id',
-    username: 'Bob Jones',
+  {
+    id: 'user-2',
+    name: 'Bob Jones',
+    username: 'bob',
     email: 'bob@example.com',
-    firstName: 'Bob',
-    lastName: 'Jones',
+    clerkId: 'clerk_bob',
     imageUrl: 'https://example.com/bob.jpg',
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),
-    lastLoginAt: new Date('2024-01-09T11:00:00Z'),
-    isActive: true
+    lastLoginAt: new Date('2024-01-01T00:00:00Z'),
+    isActive: true,
+    metadata: {},
   },
-  charlie: {
-    id: 'user-charlie-id',
-    username: 'Charlie Brown',
-    email: 'charlie@example.com',
-    firstName: 'Charlie',
-    lastName: 'Brown',
-    imageUrl: 'https://example.com/charlie.jpg',
+  {
+    id: 'user-3',
+    name: 'Carol Wilson',
+    username: 'carol',
+    email: 'carol@example.com',
+    clerkId: 'clerk_carol',
+    imageUrl: 'https://example.com/carol.jpg',
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),
-    lastLoginAt: new Date('2024-01-09T10:00:00Z'),
-    isActive: true
-  }
-}; 
+    lastLoginAt: new Date('2024-01-01T00:00:00Z'),
+    isActive: true,
+    metadata: {},
+  },
+]; 

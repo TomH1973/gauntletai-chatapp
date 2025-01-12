@@ -15,6 +15,7 @@ List user's threads
   - `limit`: number (default: 20)
   - `offset`: number (default: 0)
   - `status`: 'active' | 'archived'
+  - `q`: string (optional) - Search query to filter threads by title or message content
 - Response: ThreadList
   ```typescript
   {

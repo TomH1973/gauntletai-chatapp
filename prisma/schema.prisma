@@ -29,69 +29,112 @@ enum MessageStatus {
   FAILED
 }
 
+enum SystemRole {
+  ADMIN
+  MODERATOR
+  USER
+  GUEST
+}
+
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  username      String    @unique
-  firstName     String?
-  lastName      String?
-  clerkId       String?   @unique
-  profileImage  String?
-  role          UserRole  @default(USER)
-  isActive      Boolean   @default(false)
+  id            String      @id @default(cuid())
+  email         String      @unique
+  name          String
+  systemRole    SystemRole  @default(USER)
+  password      String
+  isActive      Boolean     @default(true)
   lastLoginAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   // Relations
-  messages          Message[]
-  messageEdits      MessageEdit[]
-  reactions         MessageReaction[]
+  messages         Message[]
+  messageEdits     MessageEdit[]
+  messageReactions MessageReaction[]
   threadParticipant ThreadParticipant[]
+
+  @@index([email])
+  @@index([systemRole])
+  @@index([isActive])
+  @@index([lastLoginAt])
 }
 
 model Thread {
-  id        String   @id @default(cuid())
+  id        String      @id @default(cuid())
   title     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   // Relations
   messages     Message[]
   participants ThreadParticipant[]
+  settings     ThreadSettings?
+
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([title])
+}
+
+model ThreadSettings {
+  id              String    @id @default(cuid())
+  threadId        String    @unique
+  isPrivate       Boolean   @default(false)
+  allowInvites    Boolean   @default(true)
+  allowReactions  Boolean   @default(true)
+  allowThreading  Boolean   @default(true)
+  allowAttachments Boolean  @default(true)
+  retentionDays   Int       @default(365)
+  updatedBy       String
+  updatedAt       DateTime  @default(now())
+
+  // Relations
+  thread          Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@index([isPrivate])
 }
 
 model ThreadParticipant {
-  userId     String
-  threadId   String
-  role       ThreadRole @default(MEMBER)
-  joinedAt   DateTime  @default(now())
+  userId    String
+  threadId  String
+  role      ThreadRole @default(MEMBER)
+  joinedAt  DateTime  @default(now())
   lastReadAt DateTime?
 
   // Relations
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  thread Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  thread    Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@id([userId, threadId])
+  @@index([threadId])
+  @@index([userId])
+  @@index([role])
+  @@index([lastReadAt])
+  @@index([joinedAt])
 }
 
 model Message {
-  id        String        @id @default(cuid())
+  id        String      @id @default(cuid())
   content   String
   threadId  String
   userId    String
-  parentId  String?
   status    MessageStatus @default(SENDING)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   // Relations
-  thread    Thread           @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent    Message?        @relation("MessageReplies", fields: [parentId], references: [id], onDelete: SetNull)
-  replies   Message[]       @relation("MessageReplies")
+  thread    Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
   edits     MessageEdit[]
   reactions MessageReaction[]
+
+  @@index([threadId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([threadId, createdAt])
+  @@index([userId, createdAt])
+  @@fulltext([content])
 }
 
 model MessageEdit {
@@ -102,8 +145,12 @@ model MessageEdit {
   createdAt DateTime @default(now())
 
   // Relations
-  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [editedBy], references: [id], onDelete: Cascade)
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  editor    User     @relation(fields: [editedBy], references: [id])
+
+  @@index([messageId])
+  @@index([editedBy])
+  @@index([createdAt])
 }
 
 model MessageReaction {
@@ -113,8 +160,12 @@ model MessageReaction {
   createdAt DateTime @default(now())
 
   // Relations
-  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
 
   @@id([messageId, userId, emoji])
+  @@index([messageId])
+  @@index([userId])
+  @@index([emoji])
+  @@index([createdAt])
 } 

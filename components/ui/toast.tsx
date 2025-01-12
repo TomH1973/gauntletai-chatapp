@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { XCircle, AlertCircle, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from './use-toast';
+import { Button } from './button';
 
 export function Toasts() {
   const { toasts } = useToast();
@@ -30,6 +31,16 @@ export function Toasts() {
               <div className="text-sm opacity-90">{toast.description}</div>
             )}
           </div>
+          {toast.action && (
+            <Button
+              variant={toast.variant === 'destructive' ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={toast.action.onClick}
+              className="ml-auto"
+            >
+              {toast.action.label}
+            </Button>
+          )}
         </div>
       ))}
     </div>

@@ -121,6 +121,7 @@ interface ThreadFilters {
   status?: 'active' | 'archived';
   type?: 'direct' | 'group';
   search?: string;
+  q?: string;
 }
 
 interface MessageFilters {

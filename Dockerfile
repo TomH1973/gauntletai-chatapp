@@ -1,54 +1,64 @@
-# Base stage for both development and production
+# Base stage
 FROM node:18-alpine AS base
+
+# Create app directory
 WORKDIR /app
 
-# Add non-root user
+# Create nextjs user and group
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nextjs -u 1001
+
+# Install OpenSSL
+RUN apk add --no-cache openssl
 
 # Development stage
 FROM base AS development
+
+# Copy package files
 COPY --chown=nextjs:nodejs package*.json ./
+
+# Copy prisma files
 COPY --chown=nextjs:nodejs prisma ./prisma/
+
+# Install dependencies
 RUN npm install
+
+# Copy source
 COPY --chown=nextjs:nodejs . .
-RUN npx prisma generate
 
+# Create prisma directory and set permissions
+RUN mkdir -p node_modules/.prisma
+RUN mkdir -p .next
+RUN chown -R nextjs:nodejs node_modules .next
+
+# Switch to nextjs user
 USER nextjs
-CMD ["npm", "run", "dev"]
 
-# Production build stage
-FROM base AS builder
+# Start development server
+CMD npx prisma generate && npm run dev
+
+# Production stage
+FROM base AS production
+
+# Copy package files
 COPY --chown=nextjs:nodejs package*.json ./
+
+# Copy prisma files 
 COPY --chown=nextjs:nodejs prisma ./prisma/
-RUN npm ci
+
+# Install production dependencies
+RUN npm install --only=production
+
+# Copy source
 COPY --chown=nextjs:nodejs . .
-RUN npx prisma generate
-RUN npm run build
 
-# Production runtime stage
-FROM node:18-alpine AS production
-WORKDIR /app
+# Create prisma directory and set permissions
+RUN mkdir -p node_modules/.prisma
+RUN mkdir -p .next
+RUN chown -R nextjs:nodejs node_modules .next
 
-# Add non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nextjs -u 1001
-
-# Copy built files
-COPY --from=builder --chown=nextjs:nodejs /app/next.config.js ./
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
-
-ENV NODE_ENV=production
-ENV PORT=3000
-
-# Create logs directory with correct permissions
-RUN mkdir -p /app/logs && chown -R nextjs:nodejs /app/logs
-
-EXPOSE 3000
-
+# Switch to nextjs user
 USER nextjs
-CMD ["node", "server.js"] 
+
+# Start production server
+CMD npx prisma generate && npm start 

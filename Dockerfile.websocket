@@ -1,0 +1,62 @@
+# Base stage
+FROM node:18-alpine AS base
+
+# Create app directory
+WORKDIR /app
+
+# Create nextjs user and group
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nextjs -u 1001
+
+# Install OpenSSL
+RUN apk add --no-cache openssl
+
+# Development stage
+FROM base AS development
+
+# Copy package files
+COPY --chown=nextjs:nodejs package*.json ./
+
+# Copy prisma files
+COPY --chown=nextjs:nodejs prisma ./prisma/
+
+# Install dependencies
+RUN npm install
+
+# Copy source
+COPY --chown=nextjs:nodejs . .
+
+# Create prisma directory and set permissions
+RUN mkdir -p node_modules/.prisma
+RUN chown -R nextjs:nodejs node_modules
+
+# Switch to nextjs user
+USER nextjs
+
+# Start development server
+CMD npx prisma generate && npm run websocket
+
+# Production stage
+FROM base AS production
+
+# Copy package files
+COPY --chown=nextjs:nodejs package*.json ./
+
+# Copy prisma files 
+COPY --chown=nextjs:nodejs prisma ./prisma/
+
+# Install production dependencies
+RUN npm install --only=production
+
+# Copy source
+COPY --chown=nextjs:nodejs . .
+
+# Create prisma directory and set permissions
+RUN mkdir -p node_modules/.prisma
+RUN chown -R nextjs:nodejs node_modules
+
+# Switch to nextjs user
+USER nextjs
+
+# Start production server
+CMD npx prisma generate && npm run websocket 

@@ -1,122 +1,200 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logger';
-import { redis } from '@/lib/redis';
+import { metrics } from '@/app/api/metrics/route';
+import { v4 as uuidv4 } from 'uuid';
 
-// Types
-export type AuthenticatedUser = NonNullable<Awaited<ReturnType<typeof getUser>>>;
-
-// Centralized error types
-export const ApiError = {
-  Unauthorized: 'Unauthorized',
-  NotFound: 'Not Found',
-  BadRequest: 'Bad Request',
-  RateLimit: 'Rate Limit Exceeded',
-  ServerError: 'Internal Server Error'
-} as const;
-
-// Type-safe response builder
-export class ApiResponse {
-  static success<T>(data: T) {
-    return NextResponse.json(data);
-  }
-
-  static error(error: typeof ApiError[keyof typeof ApiError], status: number, details?: any) {
-    logger.error(error, { details });
-    return NextResponse.json(
-      { 
-        error,
-        details: process.env.NODE_ENV === 'development' ? details : undefined 
-      },
-      { status }
-    );
-  }
-}
-
-// Rate limiting helper
-export async function checkRateLimit(key: string, limit: number, window: number): Promise<boolean> {
-  const current = await redis.incr(key);
-  if (current === 1) {
-    await redis.expire(key, window);
-  }
-  return current <= limit;
-}
-
-// Authenticated handler wrapper
-type ApiHandler = (req: Request, user: AuthenticatedUser) => Promise<NextResponse>;
-
-export async function getUser() {
-  const { userId } = await auth();
-  if (!userId) return null;
+// Error taxonomy
+export enum ErrorCode {
+  // Client Errors (4xx)
+  UNAUTHORIZED = 'unauthorized',
+  FORBIDDEN = 'forbidden',
+  VALIDATION_ERROR = 'validation_error',
+  NOT_FOUND = 'not_found',
+  CONFLICT = 'conflict',
+  RATE_LIMIT = 'rate_limit',
   
-  return await prisma.user.findUnique({
-    where: { clerkId: userId },
-    select: {
-      id: true,
-      clerkId: true,
-      email: true,
-      name: true,
-      image: true,
-      systemRole: true,
-      status: true
-    }
-  });
+  // Server Errors (5xx)
+  INTERNAL_ERROR = 'internal_error',
+  SERVICE_UNAVAILABLE = 'service_unavailable',
+  DATABASE_ERROR = 'database_error',
+  INTEGRATION_ERROR = 'integration_error'
 }
 
-export function withAuth(handler: ApiHandler) {
-  return async (req: Request) => {
-    try {
-      // Get authenticated user
-      const user = await getUser();
-      if (!user) {
-        return ApiResponse.error(ApiError.Unauthorized, 401);
-      }
+interface ErrorDetails {
+  field?: string;
+  reason?: string;
+  help?: string;
+  trace?: string;
+}
 
-      // Check rate limit (100 requests per minute)
-      const withinLimit = await checkRateLimit(`rate_limit:${user.id}`, 100, 60);
-      if (!withinLimit) {
-        return ApiResponse.error(ApiError.RateLimit, 429);
-      }
-
-      // Call handler with authenticated user
-      return await handler(req, user);
-    } catch (error) {
-      logger.error('API error:', error);
-      return ApiResponse.error(ApiError.ServerError, 500, error);
-    }
+interface ErrorResponse {
+  error: {
+    code: ErrorCode;
+    message: string;
+    details?: ErrorDetails;
+    requestId: string;
   };
 }
 
-// Database query helpers
-export const CommonIncludes = {
-  threadParticipants: {
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          image: true
-        }
-      }
-    }
+// Error definitions with user-friendly messages
+const errorDefinitions: Record<ErrorCode, { status: number; message: string }> = {
+  [ErrorCode.UNAUTHORIZED]: {
+    status: 401,
+    message: 'Authentication required to access this resource'
   },
-  latestMessage: {
-    take: 1,
-    orderBy: {
-      createdAt: 'desc'
-    },
-    select: {
-      id: true,
-      content: true,
-      createdAt: true,
-      user: {
-        select: {
-          id: true,
-          name: true,
-          image: true
-        }
-      }
-    }
+  [ErrorCode.FORBIDDEN]: {
+    status: 403,
+    message: 'You do not have permission to perform this action'
+  },
+  [ErrorCode.VALIDATION_ERROR]: {
+    status: 400,
+    message: 'The provided input is invalid'
+  },
+  [ErrorCode.NOT_FOUND]: {
+    status: 404,
+    message: 'The requested resource was not found'
+  },
+  [ErrorCode.CONFLICT]: {
+    status: 409,
+    message: 'The request conflicts with the current state'
+  },
+  [ErrorCode.RATE_LIMIT]: {
+    status: 429,
+    message: 'Too many requests, please try again later'
+  },
+  [ErrorCode.INTERNAL_ERROR]: {
+    status: 500,
+    message: 'An unexpected error occurred'
+  },
+  [ErrorCode.SERVICE_UNAVAILABLE]: {
+    status: 503,
+    message: 'The service is temporarily unavailable'
+  },
+  [ErrorCode.DATABASE_ERROR]: {
+    status: 500,
+    message: 'A database error occurred'
+  },
+  [ErrorCode.INTEGRATION_ERROR]: {
+    status: 502,
+    message: 'An error occurred while communicating with an external service'
   }
-} as const; 
+};
+
+// Type-safe response builder
+export class ApiResponse {
+  static success<T>(data: T, headers?: HeadersInit) {
+    return NextResponse.json(data, { headers });
+  }
+
+  static error(
+    code: ErrorCode,
+    details?: ErrorDetails,
+    headers?: HeadersInit
+  ): NextResponse<ErrorResponse> {
+    const requestId = uuidv4();
+    const errorDef = errorDefinitions[code];
+    
+    // Log error with context
+    logger.error({
+      code,
+      requestId,
+      details: process.env.NODE_ENV === 'development' ? details : undefined
+    });
+
+    // Track error metrics
+    metrics.errorCounter.inc({
+      type: code,
+      code: errorDef.status.toString(),
+      path: details?.field || 'unknown'
+    });
+
+    const error: ErrorResponse = {
+      error: {
+        code,
+        message: errorDef.message,
+        details: process.env.NODE_ENV === 'development' ? details : undefined,
+        requestId
+      }
+    };
+
+    return NextResponse.json(error, {
+      status: errorDef.status,
+      headers
+    });
+  }
+
+  static unauthorized(details?: ErrorDetails) {
+    return this.error(ErrorCode.UNAUTHORIZED, details);
+  }
+
+  static forbidden(details?: ErrorDetails) {
+    return this.error(ErrorCode.FORBIDDEN, details);
+  }
+
+  static notFound(details?: ErrorDetails) {
+    return this.error(ErrorCode.NOT_FOUND, details);
+  }
+
+  static validationError(details?: ErrorDetails) {
+    return this.error(ErrorCode.VALIDATION_ERROR, details);
+  }
+
+  static conflict(details?: ErrorDetails) {
+    return this.error(ErrorCode.CONFLICT, details);
+  }
+
+  static rateLimit(details?: ErrorDetails) {
+    return this.error(ErrorCode.RATE_LIMIT, details);
+  }
+
+  static internal(details?: ErrorDetails) {
+    return this.error(ErrorCode.INTERNAL_ERROR, details);
+  }
+}
+
+// Helper to ensure authenticated requests
+export async function withAuth<T>(
+  handler: (userId: string) => Promise<T>
+): Promise<T | NextResponse<ErrorResponse>> {
+  try {
+    const { userId } = await auth();
+    if (!userId) {
+      return ApiResponse.unauthorized({
+        reason: 'No authenticated user found',
+        help: 'Please sign in to access this resource'
+      });
+    }
+    return await handler(userId);
+  } catch (error) {
+    logger.error('Authentication error:', error);
+    return ApiResponse.internal({
+      reason: 'Failed to authenticate request',
+      trace: error instanceof Error ? error.message : undefined
+    });
+  }
+}
+
+// Helper to handle common try-catch patterns
+export async function withErrorHandling<T>(
+  handler: () => Promise<T>,
+  errorMapper?: (error: unknown) => ErrorResponse
+): Promise<T | NextResponse<ErrorResponse>> {
+  try {
+    return await handler();
+  } catch (error) {
+    logger.error('Request error:', error);
+    
+    if (errorMapper) {
+      const mappedError = errorMapper(error);
+      return NextResponse.json(mappedError, {
+        status: errorDefinitions[mappedError.error.code].status
+      });
+    }
+
+    return ApiResponse.internal({
+      reason: 'An unexpected error occurred',
+      trace: error instanceof Error ? error.message : undefined
+    });
+  }
+} 

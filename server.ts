@@ -20,8 +20,7 @@ const lastSeenTimes = new Map<string, Date>();
 const userSelect = {
   id: true,
   email: true,
-  firstName: true,
-  lastName: true
+  name: true,
 } satisfies Prisma.UserSelect;
 
 io.on('connection', async (socket) => {
@@ -45,8 +44,7 @@ io.on('connection', async (socket) => {
 
   if (user) {
     socket.broadcast.emit('presence:online', {
-      userId: user.id,
-      name: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Anonymous'
+      userId: user.id
     });
   }
 
@@ -58,7 +56,9 @@ io.on('connection', async (socket) => {
     lastSeenTimes.set(userId, new Date());
     socket.emit('presence:pong', {
       onlineUsers: Array.from(onlineUsers.keys()),
-      lastSeenTimes: Object.fromEntries(lastSeenTimes)
+      lastSeenTimes: Object.fromEntries(
+        Array.from(lastSeenTimes.entries()).map(([id, date]) => [id, date.toISOString()])
+      )
     });
   });
 
@@ -82,15 +82,10 @@ io.on('connection', async (socket) => {
           threadId: data.threadId,
           userId,
           status: MessageStatus.SENT,
-          parentId: data.parentId || null,
         },
         include: {
           user: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-            },
+            select: userSelect
           },
         },
       });
@@ -98,7 +93,7 @@ io.on('connection', async (socket) => {
       // Emit new message to thread
       io.to(data.threadId).emit('message:new', {
         ...message,
-        tempId: data.tempId,
+        tempId: data.tempId || message.id,
         user: message.user
       });
 
@@ -165,7 +160,7 @@ io.on('connection', async (socket) => {
         },
       });
 
-      if (participant && !participant.leftAt) {
+      if (participant) {
         socket.join(threadId);
       }
     } catch (error) {
@@ -192,7 +187,6 @@ io.on('connection', async (socket) => {
             select: {
               id: true,
               name: true,
-              image: true,
             },
           },
         },
@@ -233,7 +227,6 @@ io.on('connection', async (socket) => {
             select: {
               id: true,
               name: true,
-              image: true,
             },
           },
         },
@@ -248,85 +241,20 @@ io.on('connection', async (socket) => {
   });
 
   // Handle typing events
-  socket.on('typing:start', async (threadId) => {
-    try {
-      // Get user info
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true, name: true },
-      });
-
-      if (!user) return;
-
-      // Initialize typing users map for thread if it doesn't exist
-      if (!typingUsers.has(threadId)) {
-        typingUsers.set(threadId, new Map());
-      }
-
-      // Add user to typing users
-      typingUsers.get(threadId)?.set(userId, {
-        username: user.name || 'Anonymous',
-        timestamp: Date.now(),
-      });
-
-      // Emit typing update to thread
-      const currentTypingUsers = Array.from(typingUsers.get(threadId)?.entries() || [])
-        .map(([id, data]) => ({
-          id,
-          username: data.username,
-        }));
-
-      io.to(threadId).emit('typing:update', {
-        threadId,
-        users: currentTypingUsers,
-      });
-
-      // Clean up typing status after 3 seconds
-      setTimeout(() => {
-        const threadTyping = typingUsers.get(threadId);
-        if (threadTyping?.has(userId)) {
-          const timestamp = threadTyping.get(userId)?.timestamp;
-          if (timestamp && Date.now() - timestamp >= 3000) {
-            threadTyping.delete(userId);
-            
-            // Emit updated typing users
-            const updatedTypingUsers = Array.from(threadTyping.entries())
-              .map(([id, data]) => ({
-                id,
-                username: data.username,
-              }));
-
-            io.to(threadId).emit('typing:update', {
-              threadId,
-              users: updatedTypingUsers,
-            });
-          }
-        }
-      }, 3000);
-    } catch (error) {
-      console.error('Error handling typing start:', error);
-    }
+  socket.on('typing:start', (threadId) => {
+    io.to(threadId).emit('typing:update', {
+      threadId,
+      userId,
+      isTyping: true
+    });
   });
 
   socket.on('typing:stop', (threadId) => {
-    try {
-      // Remove user from typing users
-      typingUsers.get(threadId)?.delete(userId);
-
-      // Emit typing update to thread
-      const currentTypingUsers = Array.from(typingUsers.get(threadId)?.entries() || [])
-        .map(([id, data]) => ({
-          id,
-          username: data.username,
-        }));
-
-      io.to(threadId).emit('typing:update', {
-        threadId,
-        users: currentTypingUsers,
-      });
-      } catch (error) {
-      console.error('Error handling typing stop:', error);
-    }
+    io.to(threadId).emit('typing:update', {
+      threadId,
+      userId,
+      isTyping: false
+    });
   });
 
   // Handle disconnection
@@ -335,10 +263,11 @@ io.on('connection', async (socket) => {
     onlineUsers.get(userId)?.delete(socket.id);
     if (onlineUsers.get(userId)?.size === 0) {
       onlineUsers.delete(userId);
-      lastSeenTimes.set(userId, new Date());
+      const currentTime = new Date();
+      lastSeenTimes.set(userId, currentTime);
       socket.broadcast.emit('presence:offline', {
         userId,
-        lastSeen: lastSeenTimes.get(userId)
+        lastSeen: currentTime
       });
     }
 
@@ -347,16 +276,11 @@ io.on('connection', async (socket) => {
       if (threadTyping.has(userId)) {
         threadTyping.delete(userId);
         
-        // Emit updated typing users
-        const updatedTypingUsers = Array.from(threadTyping.entries())
-          .map(([id, data]) => ({
-            id,
-            username: data.username,
-          }));
-
+        // Emit updated typing status
         io.to(threadId).emit('typing:update', {
           threadId,
-          users: updatedTypingUsers,
+          userId,
+          isTyping: false
         });
       }
     }
