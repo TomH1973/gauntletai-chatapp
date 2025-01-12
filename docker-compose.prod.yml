@@ -81,7 +81,7 @@ services:
         labels: "production,database"
 
   redis:
-    image: redis:6
+    image: redis:7-alpine
     restart: unless-stopped
     ports:
       - "6379:6379"
