@@ -1,0 +1,17 @@
+- [x] Security tests
+  - [x] WebSocket security
+    - [x] Connection authentication
+    - [x] Message validation
+    - [x] Rate limiting
+    - [x] Thread access control
+  - [x] API endpoint security
+    - [x] CSRF protection
+    - [x] Request validation
+    - [x] Input sanitization
+    - [x] Rate limiting
+    - [x] Authentication & Authorization
+  - [x] Data encryption
+    - [x] At-rest encryption
+    - [x] In-transit encryption (TLS/HTTPS)
+    - [x] Key management
+    - [x] End-to-end encryption for direct messages 

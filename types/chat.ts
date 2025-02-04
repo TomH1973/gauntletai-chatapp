@@ -24,35 +24,45 @@ export interface MessageAttachment {
   size: number;
 }
 
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  image?: string;
+}
+
 export interface Message {
   id: string;
   content: string;
+  createdAt: string;
+  sender: User;
   threadId: string;
-  userId: string;
-  createdAt: Date;
-  updatedAt: Date;
-  user: {
+  parentId?: string;
+  attachments?: {
     id: string;
+    url: string;
+    type: string;
     name: string;
-    email: string;
-  };
-  reactions?: MessageReaction[];
-  readBy?: Array<{ userId: string; readAt: Date }>;
-  status: MessageStatus;
+  }[];
 }
 
-export type Thread = {
+export interface Thread {
   id: string;
-  name?: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  participants: ThreadParticipant[];
-};
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  participants: User[];
+  lastMessage?: Message;
+}
 
-export type User = Pick<PrismaUser, 'id' | 'name' | 'email'>;
+export interface MessageError {
+  code: string;
+  message: string;
+  details?: any;
+}
 
 export type ThreadParticipant = PrismaThreadParticipant & {
-  user: Pick<PrismaUser, 'id' | 'name' | 'email'>;
+  user: User;
 };
 
 export interface ClientToServerEvents {

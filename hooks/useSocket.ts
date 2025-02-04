@@ -1,58 +1,35 @@
 import { useEffect, useState } from 'react';
-import { Socket as ClientSocket, connect } from 'socket.io-client';
-import { useAuth } from '@clerk/nextjs';
+import { io, Socket } from 'socket.io-client';
+import { useUser } from '@clerk/nextjs';
 
 export function useSocket() {
-  const [socket, setSocket] = useState<typeof ClientSocket | null>(null);
+  const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const { getToken } = useAuth();
+  const { user } = useUser();
 
   useEffect(() => {
-    const initSocket = async () => {
-      const token = await getToken();
-      
-      if (!token) {
-        console.error('No auth token available');
-        return;
+    if (!user?.id) return;
+
+    const socket = io('http://localhost:3002', {
+      auth: {
+        userId: user.id
       }
+    });
 
-      const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
-      if (!socketUrl) {
-        console.error('WebSocket URL not configured');
-        return;
-      }
+    socket.on('connect', () => {
+      setIsConnected(true);
+    });
 
-      const newSocket = connect(socketUrl, {
-        auth: { token },
-        reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-      });
+    socket.on('disconnect', () => {
+      setIsConnected(false);
+    });
 
-      newSocket.on('connect', () => {
-        console.log('WebSocket connected');
-        setIsConnected(true);
-      });
+    setSocket(socket);
 
-      newSocket.on('disconnect', () => {
-        console.log('WebSocket disconnected');
-        setIsConnected(false);
-      });
-
-      newSocket.on('error', (error: Error) => {
-        console.error('WebSocket error:', error);
-        setIsConnected(false);
-      });
-
-      setSocket(newSocket);
-
-      return () => {
-        newSocket.close();
-      };
+    return () => {
+      socket.disconnect();
     };
+  }, [user?.id]);
 
-    initSocket();
-  }, [getToken]);
-
-  return { socket, isConnected };
+  return socket;
 } 

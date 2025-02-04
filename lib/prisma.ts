@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { metrics } from '@/app/api/metrics/route';
+import { metrics } from '../app/api/metrics/route';
 
 const prismaClientSingleton = () => {
   return new PrismaClient().$extends({
@@ -12,8 +12,8 @@ const prismaClientSingleton = () => {
           const duration = performance.now() - start;
           
           // Record query duration
-          metrics.databaseQueryDuration.set(
-            { operation },
+          metrics.databaseQueryDuration.observe(
+            { operation, model },
             duration / 1000
           );
           
@@ -22,8 +22,8 @@ const prismaClientSingleton = () => {
           const duration = performance.now() - start;
           
           // Record failed query duration
-          metrics.databaseQueryDuration.set(
-            { operation: `${operation}_error` },
+          metrics.databaseQueryDuration.observe(
+            { operation: `${operation}_error`, model },
             duration / 1000
           );
           

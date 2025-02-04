@@ -21,6 +21,14 @@ services:
       - websocket3
     networks:
       - chatapp-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
@@ -51,11 +59,15 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
           cpus: '0.5'
           memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 512M
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
@@ -91,11 +103,15 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
           cpus: '0.5'
           memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 512M
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
       interval: 30s
@@ -124,6 +140,19 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - chatapp-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    command: postgres -c shared_buffers=1GB -c effective_cache_size=3GB -c work_mem=32MB -c maintenance_work_mem=256MB
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -138,6 +167,19 @@ services:
       - redis_data:/data
     networks:
       - chatapp-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru --save 900 1 --save 300 10
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

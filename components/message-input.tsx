@@ -1,99 +1,64 @@
-import { useState, FormEvent } from 'react';
-import { socket } from '../lib/socket';
-import { Message } from '../types';
+import { useState } from 'react'
+import { RichTextEditor } from './chat/rich-text-editor'
+import { Button } from './ui/button'
+import { Send } from 'lucide-react'
+import { useSocket } from '@/hooks/use-socket'
+import { useThread } from '@/hooks/use-thread'
+import { useUser } from '@clerk/nextjs'
 
 interface MessageInputProps {
-  threadId: string;
-  onMessageSent?: (message: Message) => void;
-  currentUser: { id: string; username: string; };
+  className?: string
 }
 
-export function MessageInput({ threadId, onMessageSent, currentUser }: MessageInputProps) {
-  const [content, setContent] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+export function MessageInput({ className }: MessageInputProps) {
+  const [content, setContent] = useState('')
+  const socket = useSocket()
+  const { activeThread } = useThread()
+  const { user } = useUser()
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!content.trim() || isSubmitting) return;
+  const handleSend = () => {
+    if (!content.trim() || !activeThread || !user) return
 
-    const optimisticMessage: Message = {
-      id: `temp-${Date.now()}`,
-      content: content.trim(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      threadId,
-      userId: currentUser.id,
-      user: {
-        id: currentUser.id,
-        username: currentUser.username,
-        email: '',
-        firstName: null,
-        lastName: null,
-        profileImage: null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        lastLoginAt: null,
-        isActive: true
-      },
-      thread: {
-        id: threadId,
-        title: null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        participants: []
-      },
-      parentId: null,
-      replies: []
-    };
+    socket?.emit('message', {
+      threadId: activeThread.id,
+      content,
+      userId: user.id,
+    })
 
-    // Optimistically update UI
-    onMessageSent?.(optimisticMessage);
-    setContent(''); // Clear input immediately
+    setContent('')
+  }
 
-    try {
-      setIsSubmitting(true);
-      const response = await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: optimisticMessage.content,
-          threadId
-        }),
-      });
+  const handleMentionSearch = async (query: string) => {
+    // Implement user search for mentions
+    return [] // TODO: Implement user search
+  }
 
-      if (!response.ok) {
-        throw new Error('Failed to send message');
-      }
-
-      const { data: message } = await response.json();
-      socket.emit('send_message', message);
-    } catch (error) {
-      console.error('Error sending message:', error);
-      alert('Failed to send message. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
+  const handleImageUpload = async (file: File) => {
+    // Implement image upload
+    return '' // TODO: Implement image upload
   }
 
   return (
-    <form onSubmit={handleSubmit} className="border-t p-4 bg-white">
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="Type a message..."
-          className="flex-1 px-4 py-2 border rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-          disabled={isSubmitting}
-        />
-        <button
-          type="submit"
-          disabled={!content.trim() || isSubmitting}
-          className="px-6 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+    <div className={className}>
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <RichTextEditor
+            content={content}
+            onChange={setContent}
+            placeholder="Type a message..."
+            onMentionSearch={handleMentionSearch}
+            onImageUpload={handleImageUpload}
+            className="min-h-[100px]"
+          />
+        </div>
+        <Button
+          onClick={handleSend}
+          disabled={!content.trim()}
+          className="mb-2"
         >
-          {isSubmitting ? 'Sending...' : 'Send'}
-        </button>
+          <Send className="h-4 w-4" />
+        </Button>
       </div>
-    </form>
-  );
+    </div>
+  )
 } 

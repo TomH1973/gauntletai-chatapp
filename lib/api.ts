@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { logger } from '@/lib/logger';
+import logger from '@/lib/logger';
 import { metrics } from '@/app/api/metrics/route';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -196,5 +196,16 @@ export async function withErrorHandling<T>(
       reason: 'An unexpected error occurred',
       trace: error instanceof Error ? error.message : undefined
     });
+  }
+}
+
+export class ApiError extends Error {
+  constructor(
+    public code: ErrorCode,
+    message: string,
+    public details?: ErrorDetails
+  ) {
+    super(message);
+    this.name = 'ApiError';
   }
 } 

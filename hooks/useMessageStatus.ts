@@ -1,8 +1,7 @@
 import { useCallback } from 'react';
-import { messageCache } from '@/lib/cache';
-import { logger } from '@/lib/logger';
-import { MessageStatus } from '@/types';
-import type { Message } from '@/types';
+import { cache, CACHE_KEYS, CACHE_TTL } from '@/config/redis';
+import logger from '@/lib/logger';
+import { Message, MessageStatus } from '@/types';
 
 /**
  * @interface MessageStatusUpdate
@@ -78,9 +77,9 @@ interface MessageStatusUpdate {
  * ```
  */
 export function useMessageStatus() {
-  const updateMessageStatus = useCallback(({ messageId, status, error }: MessageStatusUpdate) => {
+  const updateMessageStatus = useCallback(async ({ messageId, status, error }: MessageStatusUpdate) => {
     try {
-      const message = messageCache.get(messageId);
+      const message = await cache.get<Message>(CACHE_KEYS.message(messageId));
       if (!message) {
         logger.warn('Attempted to update status of non-existent message', { messageId, status });
         return;
@@ -89,10 +88,10 @@ export function useMessageStatus() {
       const updatedMessage: Message = {
         ...message,
         status,
-        error: error || undefined
+        error
       };
 
-      messageCache.set(messageId, updatedMessage);
+      await cache.set(CACHE_KEYS.message(messageId), updatedMessage, CACHE_TTL.MESSAGE);
     } catch (err) {
       logger.error('Failed to update message status', { messageId, status, error: err });
     }

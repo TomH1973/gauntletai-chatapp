@@ -1,58 +1,37 @@
+import { auth } from '@clerk/nextjs';
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { hashPassword, createSession, getSessionCookie } from '@/lib/auth';
+import { createUser } from '@/lib/auth';
 
 export async function POST(request: Request) {
   try {
-    const { email, username, password } = await request.json();
-
-    // Validate input
-    if (!email || !username || !password) {
-      return new NextResponse('Missing required fields', { status: 400 });
-    }
-
-    // Check if user exists
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [{ email }, { username }],
-      },
-    });
-
-    if (existingUser) {
+    const { userId } = auth();
+    if (!userId) {
       return new NextResponse(
-        'User with this email or username already exists',
-        { status: 409 }
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401 }
       );
     }
 
-    // Create user
-    const hashedPassword = await hashPassword(password);
-    const user = await prisma.user.create({
-      data: {
-        email,
-        username,
-        passwordHash: hashedPassword,
-      },
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        firstName: true,
-        lastName: true,
-        profileImage: true,
-      },
-    });
+    const { email, name } = await request.json();
+    
+    if (!email || !name) {
+      return new NextResponse(
+        JSON.stringify({ error: 'Missing required fields' }),
+        { status: 400 }
+      );
+    }
 
-    // Create session
-    const token = await createSession(user.id);
+    const user = await createUser(userId, email, name);
 
-    // Create response with cookie
-    const response = NextResponse.json({ user });
-    response.cookies.set(getSessionCookie(token));
-
-    return response;
+    return new NextResponse(
+      JSON.stringify({ user }),
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Signup error:', error);
-    return new NextResponse('Internal Server Error', { status: 500 });
+    return new NextResponse(
+      JSON.stringify({ error: 'Internal Server Error' }),
+      { status: 500 }
+    );
   }
 } 

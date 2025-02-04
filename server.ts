@@ -1,11 +1,11 @@
-import { Server } from 'socket.io';
-import { createServer } from 'http';
 import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 import { prisma } from './lib/prisma';
 import { Prisma } from '@prisma/client';
 import type { ClientToServerEvents, ServerToClientEvents } from './types/chat';
-import { validateMessage } from '@/lib/validation/message';
-import { SocketErrorCode, handleSocketError } from '@/lib/socketErrors';
+import { validateMessage } from './lib/validation/message';
+import { SocketErrorCode, handleSocketError } from './lib/socketErrors';
 import { MessageStatus } from './types/message';
 
 const app = express();
@@ -184,10 +184,7 @@ io.on('connection', async (socket) => {
         },
         include: {
           user: {
-            select: {
-              id: true,
-              name: true,
-            },
+            select: userSelect
           },
         },
       });
@@ -224,10 +221,7 @@ io.on('connection', async (socket) => {
         },
         include: {
           user: {
-            select: {
-              id: true,
-              name: true,
-            },
+            select: userSelect
           },
         },
       });

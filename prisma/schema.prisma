@@ -1,23 +1,10 @@
-generator client {
-  provider = "prisma-client-js"
-}
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
-  ADMIN
-  MODERATOR
-  USER
-  GUEST
-}
-
-enum ThreadRole {
-  OWNER
-  ADMIN
-  MEMBER
+generator client {
+  provider = "prisma-client-js"
 }
 
 enum MessageStatus {
@@ -25,123 +12,103 @@ enum MessageStatus {
   SENT
   DELIVERED
   READ
-  ERROR
   FAILED
 }
 
-enum SystemRole {
-  ADMIN
-  MODERATOR
-  USER
-  GUEST
+enum FileType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  ARCHIVE
+  OTHER
 }
 
 model User {
-  id            String      @id @default(cuid())
-  email         String      @unique
-  name          String
-  systemRole    SystemRole  @default(USER)
-  password      String
-  isActive      Boolean     @default(true)
-  lastLoginAt   DateTime?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id        String    @id @default(cuid())
+  clerkId   String    @unique
+  email     String    @unique
+  name      String
+  image     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   // Relations
-  messages         Message[]
-  messageEdits     MessageEdit[]
-  messageReactions MessageReaction[]
-  threadParticipant ThreadParticipant[]
+  messages     Message[]
+  messageEdits MessageEdit[]
+  threads      ThreadParticipant[]
+  attachments  Attachment[]
 
   @@index([email])
-  @@index([systemRole])
-  @@index([isActive])
-  @@index([lastLoginAt])
+  @@index([createdAt])
 }
 
 model Thread {
-  id        String      @id @default(cuid())
-  title     String
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  id            String    @id @default(cuid())
+  name          String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastMessageAt DateTime?
 
   // Relations
   messages     Message[]
   participants ThreadParticipant[]
-  settings     ThreadSettings?
 
   @@index([createdAt])
-  @@index([updatedAt])
-  @@index([title])
-}
-
-model ThreadSettings {
-  id              String    @id @default(cuid())
-  threadId        String    @unique
-  isPrivate       Boolean   @default(false)
-  allowInvites    Boolean   @default(true)
-  allowReactions  Boolean   @default(true)
-  allowThreading  Boolean   @default(true)
-  allowAttachments Boolean  @default(true)
-  retentionDays   Int       @default(365)
-  updatedBy       String
-  updatedAt       DateTime  @default(now())
-
-  // Relations
-  thread          Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
-
-  @@index([threadId])
-  @@index([isPrivate])
+  @@index([lastMessageAt])
 }
 
 model ThreadParticipant {
   userId    String
   threadId  String
-  role      ThreadRole @default(MEMBER)
+  role      String    @default("MEMBER")
   joinedAt  DateTime  @default(now())
-  lastReadAt DateTime?
+  leftAt    DateTime?
 
   // Relations
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  thread    Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+  thread  Thread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@id([userId, threadId])
-  @@index([threadId])
   @@index([userId])
+  @@index([threadId])
   @@index([role])
-  @@index([lastReadAt])
-  @@index([joinedAt])
 }
 
 model Message {
-  id        String      @id @default(cuid())
+  id        String       @id @default(cuid())
   content   String
-  threadId  String
   userId    String
+  threadId  String
+  parentId  String?     // Parent message ID for replies
   status    MessageStatus @default(SENDING)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 
   // Relations
-  thread    Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id])
+  user      User         @relation(fields: [userId], references: [id])
+  thread    Thread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  parent    Message?     @relation("MessageReplies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies   Message[]    @relation("MessageReplies")
   edits     MessageEdit[]
-  reactions MessageReaction[]
+  reactions Reaction[]
+  attachments Attachment[]
 
-  @@index([threadId])
   @@index([userId])
+  @@index([threadId])
+  @@index([parentId])
   @@index([status])
   @@index([createdAt])
   @@index([threadId, createdAt])
   @@index([userId, createdAt])
-  @@fulltext([content])
+  @@index([content])
 }
 
 model MessageEdit {
   id        String   @id @default(cuid())
   messageId String
-  content   String
   editedBy  String
+  content   String
   createdAt DateTime @default(now())
 
   // Relations
@@ -153,19 +120,40 @@ model MessageEdit {
   @@index([createdAt])
 }
 
-model MessageReaction {
+model Reaction {
+  id        String   @id @default(cuid())
   messageId String
-  userId    String
   emoji     String
+  users     String[]
+  count     Int      @default(1)
   createdAt DateTime @default(now())
-
-  // Relations
+  updatedAt DateTime @updatedAt
   message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id])
 
-  @@id([messageId, userId, emoji])
+  @@unique([messageId, emoji])
   @@index([messageId])
-  @@index([userId])
-  @@index([emoji])
-  @@index([createdAt])
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  filename  String
+  key       String   @unique
+  url       String
+  size      Int
+  mimeType  String
+  fileType  FileType
+  isPublic  Boolean  @default(false)
+  isDeleted Boolean  @default(false)
+  
+  uploaderId String
+  uploader   User     @relation(fields: [uploaderId], references: [id])
+  messageId  String?
+  message    Message? @relation(fields: [messageId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([uploaderId])
+  @@index([messageId])
+  @@index([fileType])
 } 

@@ -1,88 +1,35 @@
-import { useCallback } from 'react';
-import { messageCache, threadCache } from '@/lib/cache';
-import { logger } from '@/lib/logger';
-import type { Message, Thread, ThreadParticipant } from '@/types';
+import { cache, CACHE_KEYS, CACHE_TTL } from '@/config/redis';
+import logger from '@/lib/logger';
+import { Message, Thread } from '@/types';
+import { useSession } from 'next-auth/react';
 
-interface ReadReceipt {
-  messageId: string;
-  userId: string;
-  readAt: Date;
-}
-
-export function useReadReceipts(threadId: string) {
-  const updateReadReceipts = useCallback((receipts: ReadReceipt[]) => {
+export function useReadReceipts() {
+  const { data: session } = useSession();
+  
+  const markAsRead = async (messageId: string, threadId: string) => {
+    if (!session?.user?.id) return;
+    
     try {
-      const thread = threadCache.get(threadId);
-      if (!thread) {
-        logger.warn('Attempted to update read receipts for non-existent thread', { threadId });
+      const [message, thread] = await Promise.all([
+        cache.get<Message>(CACHE_KEYS.message(messageId)),
+        cache.get<Thread>(CACHE_KEYS.thread(threadId))
+      ]);
+
+      if (!message || !thread) {
+        logger.warn('Attempted to mark non-existent message/thread as read', { messageId, threadId });
         return;
       }
 
-      // Update participant's lastReadAt
-      const updatedParticipants = thread.participants.map(participant => {
-        const latestReceipt = receipts
-          .filter(r => r.userId === participant.userId)
-          .sort((a, b) => b.readAt.getTime() - a.readAt.getTime())[0];
+      const updatedMessage = {
+        ...message,
+        readBy: [...(message.readBy || []), session.user.id]
+      };
 
-        if (latestReceipt) {
-          return {
-            ...participant,
-            lastReadAt: latestReceipt.readAt
-          };
-        }
-        return participant;
-      });
-
-      // Update thread with new participants
-      threadCache.set(threadId, {
-        ...thread,
-        participants: updatedParticipants
-      });
-
-      // Update message read status
-      receipts.forEach(receipt => {
-        const message = messageCache.get(receipt.messageId);
-        if (message) {
-          const readAt = { ...(message.readAt || {}) };
-          readAt[receipt.userId] = receipt.readAt;
-
-          messageCache.set(receipt.messageId, {
-            ...message,
-            readBy: Array.from(new Set([...message.readBy, receipt.userId])),
-            readAt
-          });
-        }
-      });
+      await cache.set(CACHE_KEYS.message(messageId), updatedMessage, CACHE_TTL.MESSAGE);
     } catch (err) {
-      logger.error('Failed to update read receipts', { threadId, error: err });
+      logger.error('Failed to mark message as read', { messageId, threadId, error: err });
     }
-  }, [threadId]);
-
-  const markThreadAsRead = useCallback((userId: string) => {
-    try {
-      const thread = threadCache.get(threadId);
-      if (!thread) {
-        logger.warn('Attempted to mark non-existent thread as read', { threadId });
-        return;
-      }
-
-      const now = new Date();
-      const receipts: ReadReceipt[] = thread.messages
-        .filter(m => !m.readBy.includes(userId))
-        .map(m => ({
-          messageId: m.id,
-          userId,
-          readAt: now
-        }));
-
-      updateReadReceipts(receipts);
-    } catch (err) {
-      logger.error('Failed to mark thread as read', { threadId, error: err });
-    }
-  }, [threadId, updateReadReceipts]);
-
-  return {
-    updateReadReceipts,
-    markThreadAsRead
   };
+
+  return { markAsRead };
 } 

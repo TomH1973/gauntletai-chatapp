@@ -1,97 +1,76 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { messageCache, threadCache, participantCache, presenceCache } from '@/lib/cache';
+import { useEffect, useState } from 'react';
+import { cache, getMetrics } from '@/config/redis';
 
 interface CacheStats {
   hits: number;
   misses: number;
-  size: number;
-  invalidations: number;
-}
-
-interface CacheMetrics {
   hitRate: number;
-  missRate: number;
-  invalidationRate: number;
-  utilizationRate: number;
+  operationLatency: number;
 }
 
 export function CacheMonitor() {
-  const [stats, setStats] = useState<Record<string, CacheStats>>({});
-  const [metrics, setMetrics] = useState<Record<string, CacheMetrics>>({});
+  const [stats, setStats] = useState<CacheStats>({
+    hits: 0,
+    misses: 0,
+    hitRate: 0,
+    operationLatency: 0
+  });
 
   useEffect(() => {
-    const updateStats = () => {
-      const newStats = {
-        messages: messageCache.getStats(),
-        threads: threadCache.getStats(),
-        participants: participantCache.getStats(),
-        presence: presenceCache.getStats()
-      };
+    const updateStats = async () => {
+      const metrics = getMetrics();
+      const [hitsMetric, missesMetric, durationMetric] = await Promise.all([
+        metrics.cacheHits.get(),
+        metrics.cacheMisses.get(),
+        metrics.cacheOperationDuration.get()
+      ]);
 
-      setStats(newStats);
+      const hits = Number(hitsMetric.values[0]?.value ?? 0);
+      const misses = Number(missesMetric.values[0]?.value ?? 0);
+      const total = hits + misses;
+      const hitRate = total > 0 ? (hits / total) * 100 : 0;
+      
+      // Use the average of the histogram buckets for latency
+      const latency = durationMetric.values.reduce((sum, bucket) => 
+        sum + Number(bucket.value), 0) / durationMetric.values.length || 0;
 
-      // Calculate metrics
-      const newMetrics: Record<string, CacheMetrics> = {};
-      Object.entries(newStats).forEach(([name, cacheStats]) => {
-        const total = cacheStats.hits + cacheStats.misses;
-        newMetrics[name] = {
-          hitRate: total ? (cacheStats.hits / total) * 100 : 0,
-          missRate: total ? (cacheStats.misses / total) * 100 : 0,
-          invalidationRate: total ? (cacheStats.invalidations / total) * 100 : 0,
-          utilizationRate: name === 'messages' ? (cacheStats.size / 1000) * 100 :
-                          name === 'threads' ? (cacheStats.size / 50) * 100 :
-                          (cacheStats.size / 100) * 100
-        };
+      setStats({
+        hits,
+        misses,
+        hitRate,
+        operationLatency: latency
       });
-
-      setMetrics(newMetrics);
     };
 
     updateStats();
-    const interval = setInterval(updateStats, 5000);
-
+    const interval = setInterval(() => {
+      updateStats().catch(console.error);
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
   return (
-    <div className="p-4">
-      <h2 className="text-xl font-semibold mb-4">Cache Monitor</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {Object.entries(stats).map(([name, cacheStats]) => (
-          <div key={name} className="p-4 border rounded-lg">
-            <h3 className="text-lg font-medium capitalize mb-2">{name}</h3>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span>Size:</span>
-                <span>{cacheStats.size}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Hit Rate:</span>
-                <span>{metrics[name]?.hitRate.toFixed(1)}%</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Miss Rate:</span>
-                <span>{metrics[name]?.missRate.toFixed(1)}%</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Invalidations:</span>
-                <span>{cacheStats.invalidations}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Utilization:</span>
-                <span>{metrics[name]?.utilizationRate.toFixed(1)}%</span>
-              </div>
-            </div>
-            <div className="mt-3 h-2 bg-gray-200 rounded">
-              <div
-                className="h-full bg-blue-500 rounded"
-                style={{ width: `${metrics[name]?.utilizationRate}%` }}
-              />
-            </div>
-          </div>
-        ))}
+    <div className="p-4 bg-white rounded-lg shadow">
+      <h2 className="text-xl font-bold mb-4">Cache Monitor</h2>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <h3 className="font-semibold">Cache Hits</h3>
+          <p className="text-2xl">{stats.hits.toLocaleString()}</p>
+        </div>
+        <div>
+          <h3 className="font-semibold">Cache Misses</h3>
+          <p className="text-2xl">{stats.misses.toLocaleString()}</p>
+        </div>
+        <div>
+          <h3 className="font-semibold">Hit Rate</h3>
+          <p className="text-2xl">{stats.hitRate.toFixed(1)}%</p>
+        </div>
+        <div>
+          <h3 className="font-semibold">Avg Latency</h3>
+          <p className="text-2xl">{stats.operationLatency.toFixed(2)}ms</p>
+        </div>
       </div>
     </div>
   );

@@ -178,7 +178,50 @@ io.on('connection', async (socket) => {
                 profileImage: true,
               },
             },
+            // Include parent message if this is a reply
+            parent: data.parentId ? {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    username: true,
+                    profileImage: true,
+                  },
+                },
+              },
+            } : false,
           },
+        });
+
+        // If this is a reply, update the parent message to include this reply
+        if (data.parentId) {
+          const parentReplies = await prisma.message.findMany({
+            where: { parentId: data.parentId },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  username: true,
+                  profileImage: true,
+                },
+              },
+            },
+            orderBy: { createdAt: 'asc' },
+          });
+
+          // Emit update to parent message with new replies
+          io.to(`thread:${data.threadId}`).emit('message:updated', {
+            ...message.parent,
+            replies: parentReplies,
+          });
+        }
+
+        // Emit new message to thread
+        io.to(`thread:${data.threadId}`).emit('message:new', {
+          ...message,
+          tempId: data.tempId,
+          user: message.user,
+          replies: [], // New messages start with no replies
         });
 
         // Update rate limiting
@@ -189,13 +232,6 @@ io.on('connection', async (socket) => {
             messageRateLimit.set(userId, currentRate - 1);
           }
         }, RATE_LIMIT_WINDOW);
-
-        // Emit new message to thread
-        io.to(`thread:${data.threadId}`).emit('message:new', {
-          ...message,
-          tempId: data.tempId,
-          user: message.user,
-        });
 
         // Handle delivery status
         const participants = await prisma.threadParticipant.findMany({
@@ -1243,6 +1279,96 @@ io.on('connection', async (socket) => {
       } catch (error) {
         console.error('Error updating thread settings:', error);
         handleSocketError(socket, error as Error);
+      }
+    });
+
+    // Add reaction handler
+    socket.on('message:react', async ({ messageId, emoji }: { messageId: string; emoji: string }) => {
+      try {
+        const message = await prisma.message.findUnique({
+          where: { id: messageId },
+          include: { reactions: true }
+        });
+
+        if (!message) {
+          socket.emit('error', { message: 'Message not found' });
+          return;
+        }
+
+        // Check if reaction already exists
+        const existingReaction = await prisma.reaction.findUnique({
+          where: {
+            messageId_emoji: {
+              messageId,
+              emoji
+            }
+          }
+        });
+
+        if (existingReaction) {
+          // User has already reacted - remove their reaction
+          if (existingReaction.users.includes(socket.userId)) {
+            const updatedUsers = existingReaction.users.filter(id => id !== socket.userId);
+            
+            if (updatedUsers.length === 0) {
+              // Delete reaction if no users left
+              await prisma.reaction.delete({
+                where: { id: existingReaction.id }
+              });
+            } else {
+              // Update users and count
+              await prisma.reaction.update({
+                where: { id: existingReaction.id },
+                data: {
+                  users: updatedUsers,
+                  count: updatedUsers.length
+                }
+              });
+            }
+          } else {
+            // Add user's reaction
+            await prisma.reaction.update({
+              where: { id: existingReaction.id },
+              data: {
+                users: [...existingReaction.users, socket.userId],
+                count: existingReaction.count + 1
+              }
+            });
+          }
+        } else {
+          // Create new reaction
+          await prisma.reaction.create({
+            data: {
+              messageId,
+              emoji,
+              users: [socket.userId],
+              count: 1
+            }
+          });
+        }
+
+        // Get updated message with reactions
+        const updatedMessage = await prisma.message.findUnique({
+          where: { id: messageId },
+          include: {
+            reactions: true,
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                imageUrl: true
+              }
+            }
+          }
+        });
+
+        // Broadcast updated message to thread
+        io.to(message.threadId).emit('message:updated', updatedMessage);
+
+      } catch (error) {
+        console.error('Error handling reaction:', error);
+        socket.emit('error', { message: 'Failed to handle reaction' });
       }
     });
 

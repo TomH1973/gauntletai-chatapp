@@ -1,0 +1,42 @@
+config:
+  target: "ws://localhost:3002"
+  phases:
+    - name: "Warm up"
+      duration: 60
+      arrivalRate: 5
+      rampTo: 50
+    - name: "Sustained load"
+      duration: 300
+      arrivalRate: 50
+  ws:
+    # Reuse WebSocket connections
+    rejectUnauthorized: false
+    subprotocols: ["websocket"]
+    
+scenarios:
+  - name: "Chat messaging flow"
+    engine: "ws"
+    flow:
+      # Connect and authenticate
+      - connect: "/"
+      - think: 2
+      - emit:
+          channel: "auth"
+          data: "{{ $processEnvironment.TEST_AUTH_TOKEN }}"
+      - think: 1
+      
+      # Join test thread
+      - emit:
+          channel: "thread:join"
+          data: "{{ $processEnvironment.TEST_THREAD_ID }}"
+      - think: 1
+      
+      # Send messages in a loop
+      - loop:
+          - emit:
+              channel: "message:send"
+              data:
+                threadId: "{{ $processEnvironment.TEST_THREAD_ID }}"
+                content: "Load test message {{ $randomNumber(1, 1000) }}"
+          - think: 2
+        count: 10 

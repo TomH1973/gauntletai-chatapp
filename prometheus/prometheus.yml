@@ -1,0 +1,58 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+rule_files:
+  - "/etc/prometheus/rules/scaling.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'app_servers'
+    dns_sd_configs:
+      - names:
+        - 'app1'
+        - 'app2'
+        - 'app3'
+        type: 'A'
+        port: 3000
+    metrics_path: '/metrics'
+    scheme: 'http'
+
+  - job_name: 'websocket_servers'
+    dns_sd_configs:
+      - names:
+        - 'websocket1'
+        - 'websocket2'
+        - 'websocket3'
+        type: 'A'
+        port: 4000
+    metrics_path: '/metrics'
+    scheme: 'http'
+
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx:9913']
+    metrics_path: '/metrics'
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:9121']
+    metrics_path: '/metrics'
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:9187']
+    metrics_path: '/metrics'
+
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100'] 

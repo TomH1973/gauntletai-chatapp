@@ -4,6 +4,8 @@ import { GET, POST } from '../../app/api/threads/route';
 import { prisma } from '@/lib/prisma';
 import { NextRequest } from 'next/server';
 import { ParticipantRole } from '@prisma/client';
+import { createMocks } from 'node-mocks-http';
+import { GET as MessageGET, POST as MessagePOST } from '@/app/api/threads/[threadId]/messages/route';
 
 jest.mock('@clerk/nextjs');
 jest.mock('@/lib/prisma');
@@ -354,6 +356,194 @@ describe('Threads API', () => {
 
       const response = await POST(request);
       expect(response.status).toBe(400);
+    });
+  });
+});
+
+describe('Thread API', () => {
+  let testUser: any;
+  let testThread: any;
+
+  beforeEach(async () => {
+    // Create test user
+    testUser = await prisma.user.create({
+      data: {
+        clerkId: 'test-clerk-id',
+        email: 'test@example.com',
+        name: 'Test User',
+      },
+    });
+
+    // Create test thread
+    testThread = await prisma.thread.create({
+      data: {
+        name: 'Test Thread',
+        participants: {
+          create: {
+            userId: testUser.id,
+            role: 'OWNER',
+          },
+        },
+      },
+    });
+
+    // Mock Clerk auth to return test user
+    (auth as jest.MockedFunction<typeof auth>).mockResolvedValue({
+      userId: testUser.clerkId,
+      sessionId: 'test-session',
+      session: null,
+      actor: null,
+      organization: null,
+      debug: null,
+    });
+  });
+
+  afterEach(async () => {
+    // Clean up test data
+    await prisma.threadParticipant.deleteMany({
+      where: { threadId: testThread.id },
+    });
+    await prisma.thread.delete({
+      where: { id: testThread.id },
+    });
+    await prisma.user.delete({
+      where: { id: testUser.id },
+    });
+  });
+
+  describe('GET /api/threads/[threadId]/messages', () => {
+    it('should return unauthorized for unauthenticated requests', async () => {
+      (auth as jest.MockedFunction<typeof auth>).mockResolvedValueOnce({
+        userId: null,
+        sessionId: null,
+        session: null,
+        actor: null,
+        organization: null,
+        debug: null,
+      });
+
+      const { req, res } = createMocks({
+        method: 'GET',
+        params: { threadId: testThread.id },
+      });
+
+      await MessageGET(req, { params: { threadId: testThread.id } });
+      expect(res._getStatusCode()).toBe(401);
+    });
+
+    it('should return messages for authenticated thread participant', async () => {
+      const message = await prisma.message.create({
+        data: {
+          content: 'Test message',
+          userId: testUser.id,
+          threadId: testThread.id,
+        },
+      });
+
+      const { req, res } = createMocks({
+        method: 'GET',
+        params: { threadId: testThread.id },
+      });
+
+      await MessageGET(req, { params: { threadId: testThread.id } });
+      expect(res._getStatusCode()).toBe(200);
+
+      const data = JSON.parse(res._getData());
+      expect(Array.isArray(data)).toBe(true);
+      expect(data.length).toBe(1);
+      expect(data[0].id).toBe(message.id);
+    });
+
+    it('should return threaded messages correctly', async () => {
+      const parentMessage = await prisma.message.create({
+        data: {
+          content: 'Parent message',
+          userId: testUser.id,
+          threadId: testThread.id,
+        },
+      });
+
+      const replyMessage = await prisma.message.create({
+        data: {
+          content: 'Reply message',
+          userId: testUser.id,
+          threadId: testThread.id,
+          parentId: parentMessage.id,
+        },
+      });
+
+      const { req, res } = createMocks({
+        method: 'GET',
+        params: { threadId: testThread.id },
+      });
+
+      await MessageGET(req, { params: { threadId: testThread.id } });
+      expect(res._getStatusCode()).toBe(200);
+
+      const data = JSON.parse(res._getData());
+      const parent = data.find((m: any) => m.id === parentMessage.id);
+      expect(parent).toBeDefined();
+      expect(parent.replies).toBeDefined();
+      expect(parent.replies[0].id).toBe(replyMessage.id);
+    });
+  });
+
+  describe('POST /api/threads/[threadId]/messages', () => {
+    it('should create a new message in the thread', async () => {
+      const { req, res } = createMocks({
+        method: 'POST',
+        params: { threadId: testThread.id },
+        body: {
+          content: 'New test message',
+        },
+      });
+
+      await MessagePOST(req, { params: { threadId: testThread.id } });
+      expect(res._getStatusCode()).toBe(201);
+
+      const data = JSON.parse(res._getData());
+      expect(data.content).toBe('New test message');
+      expect(data.threadId).toBe(testThread.id);
+      expect(data.userId).toBe(testUser.id);
+    });
+
+    it('should create a threaded reply', async () => {
+      const parentMessage = await prisma.message.create({
+        data: {
+          content: 'Parent message',
+          userId: testUser.id,
+          threadId: testThread.id,
+        },
+      });
+
+      const { req, res } = createMocks({
+        method: 'POST',
+        params: { threadId: testThread.id },
+        body: {
+          content: 'Reply message',
+          parentId: parentMessage.id,
+        },
+      });
+
+      await MessagePOST(req, { params: { threadId: testThread.id } });
+      expect(res._getStatusCode()).toBe(201);
+
+      const data = JSON.parse(res._getData());
+      expect(data.content).toBe('Reply message');
+      expect(data.parentId).toBe(parentMessage.id);
+    });
+
+    it('should validate message content', async () => {
+      const { req, res } = createMocks({
+        method: 'POST',
+        params: { threadId: testThread.id },
+        body: {
+          content: '', // Empty content should fail validation
+        },
+      });
+
+      await MessagePOST(req, { params: { threadId: testThread.id } });
+      expect(res._getStatusCode()).toBe(400);
     });
   });
 }); 

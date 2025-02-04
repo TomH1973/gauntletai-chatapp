@@ -15,21 +15,22 @@ RUN apk add --no-cache openssl
 FROM base AS development
 
 # Copy package files
-COPY --chown=nextjs:nodejs package*.json ./
+COPY package*.json ./
+COPY prisma ./prisma/
 
-# Copy prisma files
-COPY --chown=nextjs:nodejs prisma ./prisma/
+# Install dependencies and global tools
+RUN npm install && \
+    npm install -g ts-node typescript
 
-# Install dependencies
-RUN npm install
+# Copy source files
+COPY . .
 
-# Copy source
-COPY --chown=nextjs:nodejs . .
-
-# Create prisma directory and set permissions
-RUN mkdir -p node_modules/.prisma
-RUN mkdir -p .next
-RUN chown -R nextjs:nodejs node_modules .next
+# Create directories and set permissions
+RUN mkdir -p node_modules/.prisma \
+    && mkdir -p .next \
+    && chown -R nextjs:nodejs /app \
+    && chmod -R 755 /app \
+    && chmod -R 777 .next
 
 # Switch to nextjs user
 USER nextjs
@@ -41,21 +42,21 @@ CMD npx prisma generate && npm run dev
 FROM base AS production
 
 # Copy package files
-COPY --chown=nextjs:nodejs package*.json ./
-
-# Copy prisma files 
-COPY --chown=nextjs:nodejs prisma ./prisma/
+COPY package*.json ./
+COPY prisma ./prisma/
 
 # Install production dependencies
 RUN npm install --only=production
 
-# Copy source
-COPY --chown=nextjs:nodejs . .
+# Copy source files
+COPY . .
 
-# Create prisma directory and set permissions
-RUN mkdir -p node_modules/.prisma
-RUN mkdir -p .next
-RUN chown -R nextjs:nodejs node_modules .next
+# Create directories and set permissions
+RUN mkdir -p node_modules/.prisma \
+    && mkdir -p .next \
+    && chown -R nextjs:nodejs /app \
+    && chmod -R 755 /app \
+    && chmod -R 777 .next
 
 # Switch to nextjs user
 USER nextjs

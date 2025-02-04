@@ -1,112 +1,63 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Send } from 'lucide-react';
+import { useSocket } from '@/hooks/useSocket';
+import { useOfflineSupport } from '@/hooks/useOfflineSupport';
+import { useState } from 'react';
+import { Button } from '../ui/button';
+import { RichTextEditor } from './RichTextEditor';
 
-/**
- * @interface MessageInputProps
- * @description Props for the MessageInput component
- */
 interface MessageInputProps {
-  /** Callback function to handle message sending */
-  onSendMessage: (content: string) => void;
-  /** Callback function triggered when user starts typing */
-  onStartTyping: () => void;
-  /** Callback function triggered when user stops typing */
-  onStopTyping: () => void;
-  /** Whether the input is disabled */
+  onSendMessage: (content: string, attachments?: File[]) => Promise<void>;
+  onStartTyping?: () => void;
+  onStopTyping?: () => void;
   disabled?: boolean;
+  threadId?: string;
 }
 
-/**
- * @component MessageInput
- * @description A text input component for composing and sending messages with typing indicators
- * 
- * Features:
- * - Real-time typing indicators
- * - Auto-focus after sending
- * - Enter to send (Shift+Enter for new line)
- * - Disabled state handling
- * 
- * @example
- * ```tsx
- * <MessageInput
- *   onSendMessage={handleSend}
- *   onStartTyping={handleStartTyping}
- *   onStopTyping={handleStopTyping}
- *   disabled={false}
- * />
- * ```
- */
-export function MessageInput({
-  onSendMessage,
-  onStartTyping,
-  onStopTyping,
+export function MessageInput({ 
+  onSendMessage, 
+  onStartTyping, 
+  onStopTyping, 
   disabled = false,
+  threadId 
 }: MessageInputProps) {
   const [content, setContent] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { socket } = useSocket();
+  const { isOnline, queueMessage } = useOfflineSupport();
 
-  useEffect(() => {
-    if (isTyping) {
-      onStartTyping();
-    } else {
-      onStopTyping();
-    }
-  }, [isTyping, onStartTyping, onStopTyping]);
+  const handleSend = async () => {
+    if (!content.trim() || disabled) return;
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setContent(e.target.value);
-    setIsTyping(true);
-
-    // Reset typing status after 3 seconds of no input
-    const timer = setTimeout(() => {
-      setIsTyping(false);
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const handleSend = () => {
-    const trimmedContent = content.trim();
-    if (!trimmedContent || disabled) return;
-
-    onSendMessage(trimmedContent);
+    await onSendMessage(content, []);
     setContent('');
-    setIsTyping(false);
-    textareaRef.current?.focus();
   };
 
   return (
-    <div className="p-4 border-t">
+    <div className="border-t p-4">
       <div className="flex gap-2">
-        <Textarea
-          ref={textareaRef}
+        <RichTextEditor
           value={content}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
+          onChange={setContent}
+          onFocus={onStartTyping}
+          onBlur={onStopTyping}
           placeholder="Type a message..."
-          className="min-h-[60px] max-h-[200px]"
+          className="flex-1"
           disabled={disabled}
         />
-        <Button
+        <Button 
           onClick={handleSend}
-          disabled={!content.trim() || disabled}
+          size="icon"
           className="self-end"
+          disabled={disabled || !content.trim()}
         >
-          <Send className="h-4 w-4" />
+          Send
         </Button>
       </div>
+      {!isOnline && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          You're offline. Messages will be sent when you're back online.
+        </p>
+      )}
     </div>
   );
 } 

@@ -1,4 +1,4 @@
-import { PrismaClient, ParticipantRole } from '@prisma/client';
+import { PrismaClient, SystemRole, ParticipantRole, MessageStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -8,8 +8,9 @@ async function main() {
     data: {
       email: 'alice@example.com',
       name: 'Alice Johnson',
-      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=alice',
-      clerkId: 'user_mock_alice'
+      systemRole: SystemRole.MEMBER,
+      clerkId: 'user_alice',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=alice'
     }
   });
 
@@ -17,8 +18,9 @@ async function main() {
     data: {
       email: 'bob@example.com',
       name: 'Bob Smith',
-      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=bob',
-      clerkId: 'user_mock_bob'
+      systemRole: SystemRole.MEMBER,
+      clerkId: 'user_bob',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=bob'
     }
   });
 
@@ -26,8 +28,9 @@ async function main() {
     data: {
       email: 'carol@example.com',
       name: 'Carol Williams',
-      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=carol',
-      clerkId: 'user_mock_carol'
+      systemRole: SystemRole.MEMBER,
+      clerkId: 'user_carol',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=carol'
     }
   });
 
@@ -35,108 +38,93 @@ async function main() {
     data: {
       email: 'dave@example.com',
       name: 'Dave Brown',
-      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=dave',
-      clerkId: 'user_mock_dave'
+      systemRole: SystemRole.MEMBER,
+      clerkId: 'user_dave',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=dave'
     }
   });
 
-  // Create API discussion thread
+  // Create threads
   const apiThread = await prisma.thread.create({
     data: {
       name: 'API Endpoints Discussion',
       participants: {
         create: [
-          {
-            userId: alice.id,
-            role: ParticipantRole.OWNER
-          },
-          {
-            userId: bob.id,
-            role: ParticipantRole.MEMBER
-          },
-          {
-            userId: carol.id,
-            role: ParticipantRole.MEMBER
-          }
+          { userId: alice.id, role: ParticipantRole.OWNER },
+          { userId: bob.id, role: ParticipantRole.MEMBER },
+          { userId: carol.id, role: ParticipantRole.MEMBER }
         ]
       }
     }
   });
 
-  // Create messages in API thread
-  const question = await prisma.message.create({
+  // Add messages to API thread
+  await prisma.message.create({
     data: {
       content: 'What authentication method should we use for the API endpoints?',
+      threadId: apiThread.id,
       userId: alice.id,
-      threadId: apiThread.id
+      status: MessageStatus.SENT
     }
   });
 
-  const answer1 = await prisma.message.create({
+  await prisma.message.create({
     data: {
-      content: 'I suggest using JWT tokens with refresh token rotation for security.',
+      content: 'I suggest we use JWT tokens with short expiration times.',
+      threadId: apiThread.id,
       userId: bob.id,
-      threadId: apiThread.id,
-      parentId: question.id
+      status: MessageStatus.SENT
     }
   });
 
-  const answer2 = await prisma.message.create({
+  await prisma.message.create({
     data: {
-      content: 'Good idea. We should also implement rate limiting and request validation.',
-      userId: carol.id,
+      content: 'Good idea. We should also implement refresh tokens and rate limiting.',
       threadId: apiThread.id,
-      parentId: question.id
+      userId: carol.id,
+      status: MessageStatus.SENT
     }
   });
 
   // Create project timeline thread
-  const projectThread = await prisma.thread.create({
+  const timelineThread = await prisma.thread.create({
     data: {
       name: 'Project Timeline',
       participants: {
         create: [
-          {
-            userId: dave.id,
-            role: ParticipantRole.OWNER
-          },
-          {
-            userId: bob.id,
-            role: ParticipantRole.MEMBER
-          },
-          {
-            userId: carol.id,
-            role: ParticipantRole.MEMBER
-          }
+          { userId: dave.id, role: ParticipantRole.OWNER },
+          { userId: alice.id, role: ParticipantRole.MEMBER },
+          { userId: bob.id, role: ParticipantRole.MEMBER }
         ]
       }
     }
   });
 
-  // Create messages in project thread
-  const projectKickoff = await prisma.message.create({
+  // Add messages to timeline thread
+  await prisma.message.create({
     data: {
-      content: 'Here\'s our proposed timeline for the next quarter:',
+      content: 'Here\'s the proposed timeline for the next phase.',
+      threadId: timelineThread.id,
       userId: dave.id,
-      threadId: projectThread.id
+      status: MessageStatus.SENT
     }
   });
 
-  const timeline = await prisma.message.create({
+  await prisma.message.create({
     data: {
-      content: '1. API Design & Documentation (2 weeks)\n2. Core Backend Implementation (4 weeks)\n3. Frontend Development (3 weeks)\n4. Testing & Bug Fixes (2 weeks)\n5. Deployment & Launch (1 week)',
-      userId: dave.id,
-      threadId: projectThread.id,
-      parentId: projectKickoff.id
+      content: 'The backend tasks look good, but we might need more time for testing.',
+      threadId: timelineThread.id,
+      userId: alice.id,
+      status: MessageStatus.SENT
     }
   });
 
-  const feedback = await prisma.message.create({
+  await prisma.message.create({
     data: {
-      content: 'Looks good! We should add some buffer time for unexpected issues.',
+      content: 'Agreed. Let\'s add an extra week for QA and security testing.',
+      threadId: timelineThread.id,
       userId: bob.id,
-      threadId: projectThread.id,
-      parentId: projectKickoff.id
+      status: MessageStatus.SENT
     }
   });
 }

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { register, Gauge, Counter, Histogram } from 'prom-client';
 
+const isEdgeRuntime = typeof process.env.NEXT_RUNTIME === 'string' && process.env.NEXT_RUNTIME === 'edge';
+
 // Initialize metrics
 const activeConnections = new Gauge({
   name: 'websocket_active_connections',
@@ -60,42 +62,42 @@ const messageQueueSize = new Gauge({
   help: 'Size of message processing queue'
 });
 
-// Resource usage
-const memoryUsage = new Gauge({
-  name: 'app_memory_usage_bytes',
-  help: 'Application memory usage in bytes',
-  labelNames: ['type']
-});
-
-const cpuUsage = new Gauge({
-  name: 'app_cpu_usage_percent',
-  help: 'Application CPU usage percentage'
-});
-
 // Initialize the metrics
 register.setDefaultLabels({
   app: 'chat_application'
 });
 
-// Enable the collection of default metrics
-register.collectDefaultMetrics();
+// Only collect resource usage metrics in Node.js environment
+if (!isEdgeRuntime) {
+  // Resource usage metrics
+  const memoryUsage = new Gauge({
+    name: 'app_memory_usage_bytes',
+    help: 'Application memory usage in bytes',
+    labelNames: ['type']
+  });
 
-// Update resource metrics periodically
-setInterval(() => {
-  const usage = process.memoryUsage();
-  memoryUsage.set({ type: 'rss' }, usage.rss);
-  memoryUsage.set({ type: 'heapTotal' }, usage.heapTotal);
-  memoryUsage.set({ type: 'heapUsed' }, usage.heapUsed);
-  memoryUsage.set({ type: 'external' }, usage.external);
+  const cpuUsage = new Gauge({
+    name: 'app_cpu_usage_percent',
+    help: 'Application CPU usage percentage'
+  });
 
-  const startUsage = process.cpuUsage();
-  setTimeout(() => {
-    const endUsage = process.cpuUsage(startUsage);
-    const userPercent = (endUsage.user / 1000000) * 100;
-    const systemPercent = (endUsage.system / 1000000) * 100;
-    cpuUsage.set(userPercent + systemPercent);
-  }, 100);
-}, 5000);
+  // Update resource metrics periodically
+  setInterval(() => {
+    const usage = process.memoryUsage();
+    memoryUsage.set({ type: 'rss' }, usage.rss);
+    memoryUsage.set({ type: 'heapTotal' }, usage.heapTotal);
+    memoryUsage.set({ type: 'heapUsed' }, usage.heapUsed);
+    memoryUsage.set({ type: 'external' }, usage.external);
+
+    const startUsage = process.cpuUsage();
+    setTimeout(() => {
+      const endUsage = process.cpuUsage(startUsage);
+      const userPercent = (endUsage.user / 1000000) * 100;
+      const systemPercent = (endUsage.system / 1000000) * 100;
+      cpuUsage.set(userPercent + systemPercent);
+    }, 100);
+  }, 5000);
+}
 
 export async function GET() {
   try {
@@ -123,7 +125,5 @@ export const metrics = {
   cacheOperations,
   cacheHitRatio,
   messageProcessingDuration,
-  messageQueueSize,
-  memoryUsage,
-  cpuUsage
+  messageQueueSize
 }; 

@@ -13,6 +13,10 @@ import { useOptimisticMessages } from '@/hooks/useOptimisticMessages';
 import { useAuth } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
 import { ErrorCode, ERROR_MESSAGES } from '@/lib/errors';
+import { cn } from '@/lib/utils';
+import { Menu } from '@/components/icons/menu';
+import { ThreadList } from './ThreadList';
+import { useChat } from '@/hooks/useChat';
 
 interface ChatInterfaceProps {
   threadId?: string;
@@ -38,6 +42,17 @@ export function ChatInterface({ threadId, currentUser, initialMessages = [], use
     removeMessage,
     updateMessageStatus
   } = useOptimisticMessages();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const { 
+    threads,
+    currentThread,
+    messages: chatMessages,
+    isLoading: chatIsLoading,
+    error: chatError,
+    sendMessage,
+    selectThread,
+    createThread
+  } = useChat();
 
   useEffect(() => {
     if (socket) {
@@ -121,7 +136,7 @@ export function ChatInterface({ threadId, currentUser, initialMessages = [], use
 
     } catch (error) {
       const messageError = error as MessageError;
-      const errorCode = messageError.code || ErrorCode.MESSAGE_SEND_FAILED;
+      const errorCode = messageError.code as ErrorCode || ErrorCode.MESSAGE_SEND_FAILED;
       const errorDetails = ERROR_MESSAGES[errorCode];
       
       markMessageError(tempId, errorDetails.message);
@@ -130,50 +145,77 @@ export function ChatInterface({ threadId, currentUser, initialMessages = [], use
         title: errorDetails.message,
         description: errorDetails.action,
         variant: "destructive",
-        action: (
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => {
-              markMessageRetrying(tempId);
-              handleSendMessage(content, attachments);
-            }}
-          >
-            Retry
-          </Button>
-        )
+        action: {
+          label: "Retry",
+          onClick: () => {
+            markMessageRetrying(tempId);
+            handleSendMessage(content, attachments);
+          }
+        }
       });
     }
   };
 
-  if (!threadId || !currentUser) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-muted-foreground">
-        Select a conversation to start chatting
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col h-full">
-      {isConnecting && (
-        <div className="bg-yellow-100 dark:bg-yellow-900 p-2 text-center text-sm">
-          Connecting to chat server...
-        </div>
-      )}
-      
-      <MessageList
-        messages={messages}
-        currentUser={currentUser}
-        isLoading={isLoading}
-      />
-      
-      <MessageInput
-        onSendMessage={handleSendMessage}
-        onStartTyping={() => socket?.emit('typing:start', threadId)}
-        onStopTyping={() => socket?.emit('typing:stop', threadId)}
-        disabled={isSending || isConnecting}
-      />
+    <div className="flex flex-col md:flex-row h-full relative">
+      {/* Mobile Menu Button */}
+      <button 
+        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+        className="md:hidden absolute top-4 left-4 z-20 p-2 rounded-md hover:bg-accent"
+      >
+        <Menu className="h-6 w-6" />
+      </button>
+
+      {/* Sidebar */}
+      <div className={cn(
+        "fixed inset-y-0 left-0 transform md:relative md:translate-x-0 transition-transform duration-200 ease-in-out z-10",
+        "w-80 bg-background border-r",
+        isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        <ThreadList
+          threads={threads}
+          currentUser={currentUser || { id: user?.id || '', name: user?.fullName || '', email: user?.emailAddresses[0]?.emailAddress || '' }}
+          selectedThreadId={currentThread?.id}
+          onThreadSelect={(threadId) => {
+            const thread = threads.find(t => t.id === threadId);
+            if (thread) {
+              selectThread(thread);
+              setIsSidebarOpen(false);
+            }
+          }}
+        />
+      </div>
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {isConnecting && (
+          <div className="bg-yellow-100 dark:bg-yellow-900 p-2 text-center text-sm">
+            Connecting to chat server...
+          </div>
+        )}
+        
+        {!threadId || !currentUser ? (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground p-4 text-center">
+            Select a conversation to start chatting
+          </div>
+        ) : (
+          <>
+            <MessageList
+              messages={messages}
+              currentUser={currentUser}
+              isLoading={isLoading}
+            />
+            
+            <MessageInput
+              onSendMessage={handleSendMessage}
+              onStartTyping={() => socket?.emit('typing:start', threadId)}
+              onStopTyping={() => socket?.emit('typing:stop', threadId)}
+              disabled={isSending || isConnecting}
+              threadId={threadId}
+            />
+          </>
+        )}
+      </div>
     </div>
   );
 } 

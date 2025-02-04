@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 const messageSchema = z.object({
   content: z.string().min(1),
+  parentId: z.string().optional(),
 });
 
 export async function GET(
@@ -16,9 +17,21 @@ export async function GET(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const { searchParams } = new URL(req.url);
+  const parentId = searchParams.get('parentId');
+
   const messages = await prisma.message.findMany({
     where: {
       threadId: params.threadId,
+      parentId: parentId || null,
+    },
+    include: {
+      user: true,
+      replies: {
+        include: {
+          user: true,
+        },
+      },
     },
     orderBy: {
       createdAt: 'desc',
@@ -46,6 +59,10 @@ export async function POST(
         content: validatedData.content,
         userId: session.userId,
         threadId: params.threadId,
+        parentId: validatedData.parentId || null,
+      },
+      include: {
+        user: true,
       },
     });
 
