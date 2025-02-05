@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Loader2 } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -84,19 +84,25 @@ export function MessageSearch({ threadId, onMessageSelect }: MessageSearchProps)
             >
               <div className="flex items-center gap-2">
                 <img
-                  src={message.user.profileImage || '/default-avatar.png'}
-                  alt={message.user.username}
+                  src={message.user?.image || '/default-avatar.png'}
+                  alt={message.user?.name}
                   className="w-6 h-6 rounded-full"
                 />
-                <span className="font-medium">{message.user.username}</span>
+                <span className="font-medium">{message.user?.name}</span>
                 <span className="text-sm text-gray-500">
                   {formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })}
                 </span>
+                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full ml-auto">
+                  {Math.round(message.rank * 100)}% match
+                </span>
               </div>
-              <p className="mt-1 text-sm line-clamp-2">{message.content}</p>
-              {!threadId && (
+              <div 
+                className="mt-1 text-sm line-clamp-3"
+                dangerouslySetInnerHTML={{ __html: message.highlight }}
+              />
+              {!threadId && message.thread && (
                 <p className="mt-1 text-xs text-gray-500">
-                  in {message.thread.title}
+                  in {message.thread.name}
                 </p>
               )}
             </button>

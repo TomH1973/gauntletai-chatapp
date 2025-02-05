@@ -38,52 +38,78 @@ export async function GET(req: NextRequest) {
 
     const skip = (page - 1) * limit;
 
-    // Build search conditions
-    const whereConditions: any = {
-      content: {
-        contains: query,
-        mode: 'insensitive'
-      }
-    };
+    // Convert search query to tsquery format safely
+    const searchTerms = query
+      .replace(/[!@#$%^&*(),.?":{}|<>]/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter(term => term.length > 0)
+      .map(term => term.replace(/[^a-zA-Z0-9]/g, ''));
 
-    // If threadId is provided, search only in that thread
-    if (threadId) {
-      whereConditions.threadId = threadId;
-    } else {
-      // Otherwise, search in threads where user is a participant
-      whereConditions.thread = {
-        participants: {
-          some: {
-            userId
-          }
-        }
-      };
+    if (searchTerms.length === 0) {
+      return NextResponse.json({ 
+        messages: [],
+        pagination: { total: 0, pages: 0, page, limit }
+      });
     }
 
-    // Perform search with pagination
+    const searchQuery = searchTerms.map(term => `${term}:*`).join(' & ');
+
+    // Perform search with highlighting and ranking
     const [messages, total] = await Promise.all([
-      prisma.message.findMany({
-        where: whereConditions,
-        include: {
-          user: true,
-          thread: true
-        },
-        orderBy: {
-          createdAt: 'desc'
-        },
-        skip,
-        take: limit
-      }),
-      prisma.message.count({
-        where: whereConditions
-      })
+      prisma.$queryRaw(Prisma.sql`
+        SELECT 
+          m.*,
+          ts_rank_cd(to_tsvector('english', m.content), to_tsquery('english', ${searchQuery})) as rank,
+          ts_headline('english', m.content, to_tsquery('english', ${searchQuery}), 
+            'StartSel=<mark>, StopSel=</mark>, MaxWords=50, MinWords=20'
+          ) as highlight
+        FROM "Message" m
+        JOIN "Thread" t ON m.thread_id = t.id
+        JOIN "ThreadParticipant" tp ON t.id = tp.thread_id
+        WHERE 
+          tp.user_id = ${userId}
+          ${threadId ? Prisma.sql`AND t.id = ${threadId}` : Prisma.sql``}
+          AND to_tsvector('english', m.content) @@ to_tsquery('english', ${searchQuery})
+        ORDER BY rank DESC, m.created_at DESC
+        LIMIT ${limit}
+        OFFSET ${skip}
+      `),
+      prisma.$queryRaw(Prisma.sql`
+        SELECT COUNT(*)::int
+        FROM "Message" m
+        JOIN "Thread" t ON m.thread_id = t.id
+        JOIN "ThreadParticipant" tp ON t.id = tp.thread_id
+        WHERE 
+          tp.user_id = ${userId}
+          ${threadId ? Prisma.sql`AND t.id = ${threadId}` : Prisma.sql``}
+          AND to_tsvector('english', m.content) @@ to_tsquery('english', ${searchQuery})
+      `) as Promise<[{ count: number }]>
     ]);
 
+    // Get related data for messages
+    const messageIds = (messages as any[]).map(m => m.id);
+    const relatedData = await prisma.message.findMany({
+      where: { id: { in: messageIds } },
+      include: messageInclude
+    });
+
+    // Merge highlighted results with related data
+    const enrichedMessages = (messages as any[]).map(message => {
+      const related = relatedData.find(r => r.id === message.id);
+      return {
+        ...related,
+        rank: message.rank,
+        highlight: message.highlight,
+        content: message.content
+      };
+    });
+
     return NextResponse.json({
-      messages,
+      messages: enrichedMessages,
       pagination: {
-        total,
-        pages: Math.ceil(total / limit),
+        total: total[0].count,
+        pages: Math.ceil(total[0].count / limit),
         page,
         limit
       }
