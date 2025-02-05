@@ -1,78 +1,78 @@
 import React from 'react';
-import { format } from 'date-fns';
-import { User } from '@prisma/client';
+import { formatDistanceToNow } from 'date-fns';
+import type { User } from '@prisma/client';
 import { FileGallery } from './FileGallery';
 import { useFileDownload } from '@/hooks/useFileDownload';
 import { cn } from '@/lib/utils';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Reactions } from './Reactions';
 
 interface MessageProps {
   id: string;
   content: string;
-  createdAt: Date;
-  user: User;
+  createdAt: string | Date;
+  user: {
+    id: string;
+    name: string;
+    image: string | null;
+  };
   attachments?: Array<{
     id: string;
     url: string;
     filename: string;
-    mimeType: string;
-    size: number;
-    isPublic?: boolean;
+    fileType: string;
   }>;
   isEdited?: boolean;
   className?: string;
+  isLast?: boolean;
 }
 
 export function Message({
+  id,
   content,
   createdAt,
   user,
   attachments = [],
   isEdited,
   className,
+  isLast,
 }: MessageProps) {
-  const { downloadFile, downloadProgress } = useFileDownload();
+  const { downloadFile, progress } = useFileDownload();
 
-  const handleDownload = async (fileId: string) => {
-    const file = attachments.find(f => f.id === fileId);
-    if (!file) return;
-
-    try {
-      await downloadFile(fileId, file.url, file.filename);
-    } catch (error) {
-      console.error('Download failed:', error);
-      // TODO: Show error toast
-    }
+  const handleDownload = async (url: string) => {
+    await downloadFile(url);
   };
 
   return (
-    <div className={cn('flex flex-col space-y-2', className)}>
-      <div className="flex items-start space-x-2">
-        <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
-          <img
-            src={user.image || `https://ui-avatars.com/api/?name=${user.name}`}
-            alt={user.name}
-            className="w-full h-full object-cover"
-          />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-baseline space-x-2">
-            <span className="font-medium">{user.name}</span>
+    <div className={cn(
+      'flex flex-col space-y-2 p-4',
+      isLast && 'pb-8'
+    )}>
+      <div className="flex items-start gap-3">
+        <Avatar>
+          <AvatarImage src={user.image || undefined} />
+          <AvatarFallback>{user.name[0]}</AvatarFallback>
+        </Avatar>
+        <div className="flex-1 space-y-1">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium">{user.name}</p>
             <span className="text-xs text-muted-foreground">
-              {format(createdAt, 'p')}
+              {formatDistanceToNow(new Date(createdAt), { addSuffix: true })}
             </span>
             {isEdited && (
               <span className="text-xs text-muted-foreground">(edited)</span>
             )}
           </div>
-          <p className="text-sm whitespace-pre-wrap break-words">{content}</p>
+          <div className="text-sm text-muted-foreground">
+            {content}
+          </div>
+          <Reactions messageId={id} />
           {attachments.length > 0 && (
             <div className="mt-2">
               <FileGallery
-                files={attachments.map(file => ({
-                  ...file,
-                  downloadProgress: downloadProgress[file.id],
-                }))}
+                files={attachments}
                 onDownload={handleDownload}
+                downloadProgress={progress}
               />
             </div>
           )}

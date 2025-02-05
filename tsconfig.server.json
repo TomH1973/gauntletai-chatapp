@@ -1,11 +1,22 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "module": "CommonJS",
+    "module": "ESNext",
+    "moduleResolution": "node",
     "outDir": "dist",
     "noEmit": false,
-    "jsx": "react"
+    "jsx": "react",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "lib/*": ["./lib/*"]
+    }
   },
-  "include": ["server.ts", "lib/**/*.ts"],
+  "ts-node": {
+    "transpileOnly": true,
+    "esm": true,
+    "experimentalSpecifierResolution": "node"
+  },
+  "include": ["server.ts", "lib/**/*.ts", "types/**/*.ts"],
   "exclude": ["node_modules"]
 } 

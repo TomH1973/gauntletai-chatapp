@@ -1,11 +1,38 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient, UseQueryOptions } from '@tanstack/react-query';
 import { Search, Loader2 } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
+
+interface Message {
+  id: string;
+  content: string;
+  highlight: string;
+  rank: number;
+  createdAt: string;
+  user: {
+    id: string;
+    name: string;
+    image: string;
+  };
+  thread?: {
+    id: string;
+    name: string;
+  };
+}
+
+interface SearchResponse {
+  messages: Message[];
+  pagination: {
+    total: number;
+    pages: number;
+    page: number;
+    limit: number;
+  };
+}
 
 interface MessageSearchProps {
   threadId?: string;
@@ -16,11 +43,17 @@ export function MessageSearch({ threadId, onMessageSelect }: MessageSearchProps)
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const debouncedQuery = useDebounce(searchQuery, 300);
+  const queryClient = useQueryClient();
 
-  const { data, isLoading, error } = useQuery({
+  const queryOptions: UseQueryOptions<SearchResponse, Error> = {
     queryKey: ['messageSearch', debouncedQuery, threadId, page],
     queryFn: async () => {
-      if (!debouncedQuery) return null;
+      if (!debouncedQuery) {
+        return {
+          messages: [],
+          pagination: { total: 0, pages: 0, page: 1, limit: 20 }
+        } as SearchResponse;
+      }
       
       const params = new URLSearchParams({
         q: debouncedQuery,
@@ -29,11 +62,38 @@ export function MessageSearch({ threadId, onMessageSelect }: MessageSearchProps)
       });
 
       const response = await fetch(`/api/messages/search?${params}`);
-      if (!response.ok) throw new Error('Search failed');
-      return response.json();
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.message || 'Search failed');
+      }
+      const data: SearchResponse = await response.json();
+      return data;
     },
-    enabled: Boolean(debouncedQuery)
-  });
+    enabled: Boolean(debouncedQuery),
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
+    placeholderData: (previousData) => previousData,
+    retry: (failureCount, error) => {
+      if (error instanceof Error && 'status' in error && (error as any).status < 500) {
+        return false;
+      }
+      return failureCount < 2;
+    }
+  };
+
+  const { data, isLoading, error, isFetching } = useQuery<SearchResponse, Error>(queryOptions);
+
+  // Prefetch next page
+  const prefetchNextPage = useCallback(() => {
+    if (data?.pagination && data.pagination.page < data.pagination.pages) {
+      const nextPage = page + 1;
+      const nextPageOptions: UseQueryOptions<SearchResponse, Error> = {
+        ...queryOptions,
+        queryKey: ['messageSearch', debouncedQuery, threadId, nextPage]
+      };
+      queryClient.prefetchQuery(nextPageOptions);
+    }
+  }, [data, debouncedQuery, page, queryClient, threadId, queryOptions]);
 
   const handleSearchInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
@@ -41,10 +101,11 @@ export function MessageSearch({ threadId, onMessageSelect }: MessageSearchProps)
   }, []);
 
   const handleLoadMore = useCallback(() => {
-    if (data?.pagination.page < data?.pagination.pages) {
+    if (data?.pagination && data.pagination.page < data.pagination.pages) {
       setPage(prev => prev + 1);
+      prefetchNextPage();
     }
-  }, [data?.pagination]);
+  }, [data, prefetchNextPage]);
 
   return (
     <div className="flex flex-col w-full max-w-md">
@@ -59,21 +120,21 @@ export function MessageSearch({ threadId, onMessageSelect }: MessageSearchProps)
         <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
       </div>
 
-      {isLoading && (
+      {(isLoading || isFetching) && (
         <div className="flex justify-center p-4">
           <Loader2 className="w-6 h-6 animate-spin" />
         </div>
       )}
 
-      {error && (
+      {error instanceof Error && (
         <div className="p-4 text-red-500 text-center">
-          Failed to search messages
+          {error.message || 'Failed to search messages'}
         </div>
       )}
 
       {data?.messages && (
         <div className="mt-4 space-y-2">
-          {data.messages.map((message: any) => (
+          {data.messages.map((message) => (
             <button
               key={message.id}
               onClick={() => onMessageSelect?.(message.id)}

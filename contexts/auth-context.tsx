@@ -1,18 +1,19 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User } from '../types';
+import { createContext, useContext } from 'react';
+import { useAuth as useClerkAuth } from '@clerk/nextjs';
 
 interface AuthContextType {
-  user: User | null;
+  userId: string | null;
   isLoading: boolean;
-  error: string | null;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-  signup: (email: string, username: string, password: string) => Promise<void>;
+  isSignedIn: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType>({
+  userId: null,
+  isLoading: true,
+  isSignedIn: false,
+});
 
 /**
  * @stateflow Authentication State Management
@@ -76,85 +77,16 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
  *    - Maintain user session on non-critical errors
  *    - Force re-authentication on critical errors
  */
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  async function checkAuth() {
-    try {
-      const response = await fetch('/api/auth/me');
-      if (response.ok) {
-        const data = await response.json();
-        setUser(data);
-      }
-    } catch (error) {
-      console.error('Auth check failed:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function login(email: string, password: string) {
-    try {
-      setError(null);
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Login failed');
-      }
-
-      const data = await response.json();
-      setUser(data.user);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Login failed');
-      throw error;
-    }
-  }
-
-  async function logout() {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      setUser(null);
-    } catch (error) {
-      console.error('Logout failed:', error);
-    }
-  }
-
-  async function signup(email: string, username: string, password: string) {
-    try {
-      setError(null);
-      const response = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, username, password }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Signup failed');
-      }
-
-      const data = await response.json();
-      setUser(data.user);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Signup failed');
-      throw error;
-    }
-  }
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const { userId, isLoaded, isSignedIn } = useClerkAuth();
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, error, login, logout, signup }}
+      value={{
+        userId: userId || null,
+        isLoading: !isLoaded,
+        isSignedIn: isSignedIn || false,
+      }}
     >
       {children}
     </AuthContext.Provider>
@@ -162,9 +94,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  return useContext(AuthContext);
 } 

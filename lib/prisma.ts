@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { metrics } from '../app/api/metrics/route';
+import { metrics } from '@/app/api/metrics/route';
 
 const prismaClientSingleton = () => {
   return new PrismaClient().$extends({

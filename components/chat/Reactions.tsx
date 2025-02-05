@@ -1,21 +1,24 @@
-import { MessageReaction } from '@/types/chat';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Smile } from 'lucide-react';
-import { useSocket } from '@/hooks/useSocket';
+import { useMessageReactions } from '@/hooks/useMessageReactions';
 
 interface ReactionsProps {
-  reactions: MessageReaction[];
   messageId: string;
 }
 
 const commonEmojis = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
 
-export function Reactions({ reactions, messageId }: ReactionsProps) {
-  const socket = useSocket();
+export function Reactions({ messageId }: ReactionsProps) {
+  const { reactions, addReaction, removeReaction } = useMessageReactions({ messageId });
 
   const handleReaction = (emoji: string) => {
-    socket?.emit('message:react', { messageId, emoji });
+    const existingReaction = reactions.find(r => r.emoji === emoji);
+    if (existingReaction) {
+      removeReaction(emoji);
+    } else {
+      addReaction(emoji);
+    }
   };
 
   return (
@@ -29,7 +32,7 @@ export function Reactions({ reactions, messageId }: ReactionsProps) {
           onClick={() => handleReaction(reaction.emoji)}
         >
           <span className="mr-1">{reaction.emoji}</span>
-          <span>{reaction.users.length}</span>
+          <span>{reaction.count}</span>
         </Button>
       ))}
       

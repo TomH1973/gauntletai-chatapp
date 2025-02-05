@@ -3,10 +3,9 @@ import { Message as PrismaMessage, ThreadParticipant as PrismaThreadParticipant,
 export { MessageStatus };
 
 export interface MessageReaction {
-  id: string;
   emoji: string;
-  userId: string;
-  messageId: string;
+  count: number;
+  users: string[];
 }
 
 export interface MessageEdit {

@@ -1,5 +1,7 @@
 /// <reference types="cypress" />
 
+import '@testing-library/cypress/add-commands';
+
 declare global {
   namespace Cypress {
     interface Chainable {
@@ -14,26 +16,56 @@ declare global {
   }
 }
 
-// Login as primary test user
+// Mock Clerk authentication for testing
 Cypress.Commands.add('login', () => {
-  cy.session('primary-user', () => {
-    cy.visit('/auth/signin');
-    cy.get('[data-testid="email-input"]').type(Cypress.env('TEST_USER_EMAIL'));
-    cy.get('[data-testid="password-input"]').type(Cypress.env('TEST_USER_PASSWORD'));
-    cy.get('[data-testid="submit-button"]').click();
-    cy.url().should('not.include', '/auth/signin');
+  // Get test credentials from environment
+  const testEmail = Cypress.env('TEST_USER_EMAIL');
+  const testPassword = Cypress.env('TEST_USER_PASSWORD');
+
+  // Intercept Clerk auth requests
+  cy.intercept('POST', 'https://*.clerk.accounts.dev/v1/client/sign_ins').as('signIn');
+  cy.intercept('GET', 'https://*.clerk.accounts.dev/v1/client/sessions/*').as('getSession');
+
+  // Visit login page
+  cy.visit('/sign-in');
+
+  // Fill in credentials
+  cy.get('[data-testid="email-input"]').type(testEmail);
+  cy.get('[data-testid="password-input"]').type(testPassword);
+  cy.get('[data-testid="submit-button"]').click();
+
+  // Wait for auth to complete
+  cy.wait('@signIn').its('response.statusCode').should('eq', 200);
+
+  // Store session token
+  cy.window().then((win) => {
+    win.localStorage.setItem('__clerk_client_jwt', Cypress.env('TEST_USER_TOKEN'));
   });
+
+  // Verify successful login
+  cy.url().should('not.include', '/sign-in');
 });
 
-// Login as secondary test user
+// Command for second test user
 Cypress.Commands.add('loginAsSecondUser', () => {
-  cy.session('secondary-user', () => {
-    cy.visit('/auth/signin');
-    cy.get('[data-testid="email-input"]').type(Cypress.env('TEST_USER2_EMAIL'));
-    cy.get('[data-testid="password-input"]').type(Cypress.env('TEST_USER2_PASSWORD'));
-    cy.get('[data-testid="submit-button"]').click();
-    cy.url().should('not.include', '/auth/signin');
+  const testEmail2 = Cypress.env('TEST_USER_2_EMAIL');
+  const testPassword2 = Cypress.env('TEST_USER_2_PASSWORD');
+
+  cy.intercept('POST', 'https://*.clerk.accounts.dev/v1/client/sign_ins').as('signIn');
+  cy.intercept('GET', 'https://*.clerk.accounts.dev/v1/client/sessions/*').as('getSession');
+
+  cy.visit('/sign-in');
+  cy.get('[data-testid="email-input"]').type(testEmail2);
+  cy.get('[data-testid="password-input"]').type(testPassword2);
+  cy.get('[data-testid="submit-button"]').click();
+
+  cy.wait('@signIn').its('response.statusCode').should('eq', 200);
+
+  cy.window().then((win) => {
+    win.localStorage.setItem('__clerk_client_jwt', Cypress.env('TEST_USER_2_TOKEN'));
   });
+
+  cy.url().should('not.include', '/sign-in');
 });
 
 // Create a new thread

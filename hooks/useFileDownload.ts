@@ -1,23 +1,19 @@
 import { useState } from 'react';
 
-interface ProgressMap {
-  [key: string]: number;
-}
+export type ProgressMap = { [key: string]: number };
 
-export const useFileDownload = () => {
+export function useFileDownload() {
   const [progress, setProgress] = useState<ProgressMap>({});
 
   const downloadFile = async (url: string) => {
     try {
-      setProgress(prev => ({ ...prev, [url]: 0 }));
-
       const response = await fetch(url);
       const contentLength = response.headers.get('content-length');
       const total = contentLength ? parseInt(contentLength, 10) : 0;
       const reader = response.body?.getReader();
 
       if (!reader) {
-        throw new Error('Failed to get response reader');
+        throw new Error('Failed to get reader');
       }
 
       let receivedLength = 0;
@@ -33,9 +29,11 @@ export const useFileDownload = () => {
         chunks.push(value);
         receivedLength += value.length;
 
-        if (total) {
-          const currentProgress = Math.round((receivedLength / total) * 100);
-          setProgress(prev => ({ ...prev, [url]: currentProgress }));
+        if (total > 0) {
+          setProgress(prev => ({
+            ...prev,
+            [url]: Math.round((receivedLength / total) * 100)
+          }));
         }
       }
 
@@ -49,12 +47,19 @@ export const useFileDownload = () => {
       window.URL.revokeObjectURL(downloadUrl);
       document.body.removeChild(a);
 
-      setProgress(prev => ({ ...prev, [url]: 100 }));
+      setProgress(prev => {
+        const { [url]: _, ...rest } = prev;
+        return rest;
+      });
     } catch (error) {
       console.error('Download failed:', error);
-      setProgress(prev => ({ ...prev, [url]: 0 }));
+      setProgress(prev => {
+        const { [url]: _, ...rest } = prev;
+        return rest;
+      });
+      throw error;
     }
   };
 
   return { downloadFile, progress };
-}; 
+} 

@@ -2,9 +2,12 @@ import { z } from 'zod';
 import { MessageStatus } from '@/types/chat';
 import { ParticipantRole } from '@prisma/client';
 import { profanityFilter } from '@/lib/utils';
+import DOMPurify from 'isomorphic-dompurify';
+import { rateLimiter } from '../security/rateLimiter.js';
+import type { MessageInput } from '../../types/message.js';
 
 // Constants for validation rules
-const MAX_MESSAGE_LENGTH = 4000;
+const MAX_MESSAGE_LENGTH = 10000;
 const MAX_THREAD_LENGTH = 100;
 const MAX_MENTIONS = 50;
 const MAX_ATTACHMENTS = 10;
@@ -225,46 +228,69 @@ export function sanitizeMessageContent(content: string): string {
   return content;
 }
 
+// Message schema for validation
+const messageSchema = z.object({
+  content: z.string()
+    .min(1, 'Message cannot be empty')
+    .max(MAX_MESSAGE_LENGTH, `Message cannot exceed ${MAX_MESSAGE_LENGTH} characters`),
+  threadId: z.string().uuid('Invalid thread ID'),
+  tempId: z.string().optional(),
+  attachments: z.array(z.string().uuid('Invalid attachment ID')).max(MAX_ATTACHMENTS).optional()
+});
+
+export interface ValidationResult {
+  isValid: boolean;
+  sanitizedContent?: string;
+  errors?: string[];
+}
+
 /**
  * Validate a message
  */
-export async function validateMessage(message: any, userId: string): Promise<ValidationResult> {
+export async function validateMessage(data: MessageInput, userId: string): Promise<ValidationResult> {
   try {
-    // Check rate limit
-    if (checkRateLimit(userId)) {
+    // Rate limiting check
+    const rateLimitResult = await rateLimiter.checkLimit(userId, 'message:send');
+    if (!rateLimitResult.allowed) {
       return {
         isValid: false,
-        errors: ['Rate limit exceeded. Please wait before sending more messages.']
+        errors: [`Rate limit exceeded. Please wait ${rateLimitResult.retryAfter} seconds.`]
       };
     }
 
-    // Validate against schema
-    createMessageSchema.parse(message);
-
-    // Check content moderation
-    const moderation = await moderateContent(message.content);
-    if (!moderation.isValid) {
+    // Schema validation
+    const parseResult = messageSchema.safeParse(data);
+    if (!parseResult.success) {
       return {
         isValid: false,
-        errors: [moderation.reason!]
+        errors: parseResult.error.errors.map(e => e.message)
       };
     }
 
-    // Sanitize content
-    const sanitizedContent = sanitizeMessageContent(message.content);
+    // Content sanitization
+    const sanitizedContent = DOMPurify.sanitize(data.content, {
+      ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'code', 'pre'],
+      ALLOWED_ATTR: ['href']
+    });
 
-    return { 
+    // Content length check after sanitization
+    if (sanitizedContent.length > MAX_MESSAGE_LENGTH) {
+      return {
+        isValid: false,
+        errors: ['Message content too long after sanitization']
+      };
+    }
+
+    return {
       isValid: true,
       sanitizedContent
     };
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return {
-        isValid: false,
-        errors: error.errors.map(e => e.message)
-      };
-    }
-    throw error;
+    console.error('Message validation error:', error);
+    return {
+      isValid: false,
+      errors: ['Internal validation error']
+    };
   }
 }
 
@@ -277,11 +303,5 @@ export const MESSAGE_CONSTANTS = {
   RATE_LIMIT_WINDOW,
   RATE_LIMIT_MAX_MESSAGES
 } as const;
-
-export type ValidationResult = {
-  isValid: boolean;
-  errors?: string[];
-  sanitizedContent?: string;
-};
 
 // ... existing code ... 

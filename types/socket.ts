@@ -1,8 +1,10 @@
 import { Message, Thread, User } from '@prisma/client';
+import type { MessageReaction } from './chat';
 
 export interface SocketData {
   userId: string;
   sessionId: string;
+  threadIds: string[];
 }
 
 export interface MessageEvent {
@@ -230,16 +232,28 @@ export interface ServerToClientEvents {
   'message:attachmentRemoved': (data: FileAttachmentRemovedEvent) => void;
   'thread:created': (data: ThreadCreatedEvent) => void;
   'thread:settingsUpdated': (data: ThreadSettingsUpdatedEvent) => void;
+  'message:reactionUpdated': (data: { messageId: string; reactions: MessageReaction[] }) => void;
+  'thread:joined': (threadId: string) => void;
+  'thread:left': (threadId: string) => void;
+  'typing:started': (data: { threadId: string; userId: string }) => void;
+  'typing:stopped': (data: { threadId: string; userId: string }) => void;
 }
 
 export interface ClientToServerEvents {
   'presence:ping': () => void;
-  'message:send': (data: MessageEvent) => void;
-  'message:edit': (data: MessageEditEvent) => void;
-  'message:delete': (data: MessageDeleteEvent) => void;
+  'message:send': (data: {
+    content: string;
+    threadId: string;
+    parentId?: string;
+    tempId?: string;
+  }) => void;
+  'message:edit': (data: {
+    messageId: string;
+    content: string;
+  }) => void;
+  'message:delete': (messageId: string) => void;
   'message:read': (messageId: string) => void;
-  'message:addReaction': (data: MessageReactionEvent) => void;
-  'message:removeReaction': (data: MessageReactionEvent) => void;
+  'message:react': (data: { messageId: string; emoji: string }) => void;
   'typing:start': (threadId: string) => void;
   'typing:stop': (threadId: string) => void;
   'thread:join': (threadId: string) => void;
@@ -257,7 +271,11 @@ export interface ClientToServerEvents {
 }
 
 export enum SocketErrorCode {
-  INVALID_FILE = 'INVALID_FILE',
-  ATTACHMENT_NOT_FOUND = 'ATTACHMENT_NOT_FOUND',
-  UNAUTHORIZED = 'UNAUTHORIZED'
+  MESSAGE_NOT_FOUND = 'MESSAGE_NOT_FOUND',
+  THREAD_NOT_FOUND = 'THREAD_NOT_FOUND',
+  THREAD_ACCESS_DENIED = 'THREAD_ACCESS_DENIED',
+  REACTION_FAILED = 'REACTION_FAILED',
+  UNAUTHORIZED = 'UNAUTHORIZED',
+  INVALID_OPERATION = 'INVALID_OPERATION',
+  INTERNAL_ERROR = 'INTERNAL_ERROR'
 } 

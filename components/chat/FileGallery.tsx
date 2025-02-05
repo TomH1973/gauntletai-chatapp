@@ -1,60 +1,44 @@
 import React from 'react';
-import { FilePreview } from './FilePreview';
-import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { FileIcon, DownloadIcon } from 'lucide-react';
+import type { ProgressMap } from '@/hooks/useFileDownload';
 
 interface FileGalleryProps {
   files: Array<{
     id: string;
     url: string;
     filename: string;
-    mimeType: string;
-    size: number;
-    isPublic?: boolean;
+    fileType: string;
   }>;
-  className?: string;
-  onDownload?: (fileId: string) => void;
+  onDownload: (url: string) => Promise<void>;
+  downloadProgress: ProgressMap;
 }
 
-export function FileGallery({
-  files,
-  className,
-  onDownload,
-}: FileGalleryProps) {
-  const imageFiles = files.filter(f => f.mimeType.startsWith('image/'));
-  const otherFiles = files.filter(f => !f.mimeType.startsWith('image/'));
-
+export function FileGallery({ files, onDownload, downloadProgress }: FileGalleryProps) {
   return (
-    <div className={cn('space-y-4', className)}>
-      {imageFiles.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-          {imageFiles.map(file => (
-            <FilePreview
-              key={file.id}
-              url={file.url}
-              filename={file.filename}
-              mimeType={file.mimeType}
-              size={file.size}
-              isPublic={file.isPublic}
-              onDownload={() => onDownload?.(file.id)}
-            />
-          ))}
+    <div className="flex flex-col gap-2">
+      {files.map((file) => (
+        <div
+          key={file.id}
+          className="flex items-center gap-2 p-2 rounded-md bg-muted/50"
+        >
+          <FileIcon className="h-4 w-4 text-muted-foreground" />
+          <span className="flex-1 text-sm truncate">{file.filename}</span>
+          {downloadProgress[file.id] !== undefined ? (
+            <Progress value={downloadProgress[file.id]} className="w-20" />
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => onDownload(file.url)}
+            >
+              <DownloadIcon className="h-4 w-4" />
+            </Button>
+          )}
         </div>
-      )}
-      {otherFiles.length > 0 && (
-        <div className="space-y-2">
-          {otherFiles.map(file => (
-            <FilePreview
-              key={file.id}
-              url={file.url}
-              filename={file.filename}
-              mimeType={file.mimeType}
-              size={file.size}
-              isPublic={file.isPublic}
-              onDownload={() => onDownload?.(file.id)}
-            />
-          ))}
-        </div>
-      )}
+      ))}
     </div>
   );
 } 

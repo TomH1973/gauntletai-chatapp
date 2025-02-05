@@ -1,35 +1,60 @@
-import { useEffect, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
-import { useUser } from '@clerk/nextjs';
+import { useState, useEffect } from 'react';
+import { Socket as IOSocket } from 'socket.io-client';
+import { connect } from 'socket.io-client';
+import type { ServerToClientEvents, ClientToServerEvents } from '@/types/socket';
+import { useAuth } from '@/contexts/auth-context';
 
-export function useSocket() {
-  const [socket, setSocket] = useState<Socket | null>(null);
+interface UseSocketReturn {
+  socket: IOSocket<ServerToClientEvents, ClientToServerEvents> | null;
+  isConnected: boolean;
+  isReconnecting: boolean;
+}
+
+export function useSocket(): UseSocketReturn {
+  const [socket, setSocket] = useState<IOSocket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const { user } = useUser();
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const { userId, isSignedIn } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!isSignedIn || !userId) {
+      return;
+    }
 
-    const socket = io('http://localhost:3002', {
-      auth: {
-        userId: user.id
-      }
+    // Let's get this party started! 🎉
+    const socketInstance = connect(process.env.NEXT_PUBLIC_SOCKET_URL || '', {
+      auth: { userId },
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 10000,
     });
 
-    socket.on('connect', () => {
+    socketInstance.on('connect', () => {
       setIsConnected(true);
+      setIsReconnecting(false);
     });
 
-    socket.on('disconnect', () => {
+    socketInstance.on('disconnect', () => {
       setIsConnected(false);
     });
 
-    setSocket(socket);
+    socketInstance.on('reconnecting', () => {
+      setIsReconnecting(true);
+    });
+
+    socketInstance.on('reconnect', () => {
+      setIsReconnecting(false);
+    });
+
+    setSocket(socketInstance);
 
     return () => {
-      socket.disconnect();
+      socketInstance.disconnect();
     };
-  }, [user?.id]);
+  }, [userId, isSignedIn]);
 
-  return socket;
+  return { socket, isConnected, isReconnecting };
 } 

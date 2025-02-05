@@ -1,14 +1,21 @@
 import { describe, expect, it, beforeAll, afterAll } from '@jest/globals';
-import { auth } from '@clerk/nextjs';
+import { auth, useClerk } from '@clerk/nextjs';
 import { GET, POST } from '../../app/api/threads/route';
 import { prisma } from '@/lib/prisma';
 import { NextRequest } from 'next/server';
 import { ParticipantRole } from '@prisma/client';
 import { createMocks } from 'node-mocks-http';
 import { GET as MessageGET, POST as MessagePOST } from '@/app/api/threads/[threadId]/messages/route';
+import { useSessionManager } from '@/lib/auth/session';
+import { metrics } from '@/lib/metrics';
 
-jest.mock('@clerk/nextjs');
+jest.mock('@clerk/nextjs', () => ({
+  auth: jest.fn(),
+  useClerk: jest.fn()
+}));
 jest.mock('@/lib/prisma');
+jest.mock('@/lib/auth/session');
+jest.mock('@/lib/metrics');
 
 describe('Threads API', () => {
   const mockUser = {
@@ -545,5 +552,87 @@ describe('Thread API', () => {
       await MessagePOST(req, { params: { threadId: testThread.id } });
       expect(res._getStatusCode()).toBe(400);
     });
+  });
+});
+
+describe('Token Refresh', () => {
+  const mockUser = {
+    id: 'test_user_id',
+    email: 'test@example.com'
+  };
+
+  beforeAll(() => {
+    (auth as jest.Mock).mockImplementation(() => ({
+      userId: mockUser.id,
+      sessionId: 'test_session_id',
+    }));
+  });
+
+  afterAll(() => {
+    jest.resetAllMocks();
+  });
+
+  it('should refresh token before expiry', async () => {
+    const mockSession = {
+      lastActiveAt: new Date(Date.now() - 1000 * 60 * 10), // 10 minutes ago
+      expireAt: new Date(Date.now() + 1000 * 60 * 5), // expires in 5 minutes
+      reload: jest.fn().mockResolvedValue(undefined)
+    };
+
+    (useClerk as jest.Mock).mockReturnValue({
+      session: mockSession
+    });
+
+    const sessionManager = useSessionManager();
+
+    // Setup token refresh
+    await sessionManager.setupTokenRefresh();
+
+    // Fast-forward time by 4 minutes
+    jest.advanceTimersByTime(1000 * 60 * 4);
+
+    // Token should be refreshed
+    expect(mockSession.reload).toHaveBeenCalled();
+    expect(metrics.tokenRefreshSuccess.inc).toHaveBeenCalled();
+  });
+
+  it('should handle refresh errors gracefully', async () => {
+    const mockSession = {
+      lastActiveAt: new Date(Date.now() - 1000 * 60 * 10),
+      expireAt: new Date(Date.now() + 1000 * 60 * 5),
+      reload: jest.fn().mockRejectedValue(new Error('Network error'))
+    };
+
+    (useClerk as jest.Mock).mockReturnValue({
+      session: mockSession
+    });
+
+    const sessionManager = useSessionManager();
+
+    // Setup token refresh
+    await sessionManager.setupTokenRefresh();
+
+    // Fast-forward time
+    jest.advanceTimersByTime(1000 * 60 * 4);
+
+    // Error should be logged and metrics updated
+    expect(metrics.tokenRefreshErrors.inc).toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith(
+      'Token refresh failed:',
+      expect.any(Error)
+    );
+  });
+
+  it('should maintain session activity tracking', () => {
+    const sessionManager = useSessionManager();
+    
+    // Update activity
+    sessionManager.updateActivity();
+    expect(sessionManager.isExpired()).toBe(false);
+
+    // Fast-forward past inactivity timeout
+    jest.advanceTimersByTime(1000 * 60 * 60 * 25); // 25 hours
+    
+    expect(sessionManager.isExpired()).toBe(true);
   });
 }); 

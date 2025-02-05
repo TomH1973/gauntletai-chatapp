@@ -1,23 +1,32 @@
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import { authMiddleware } from "@clerk/nextjs";
 
-const isEdgeRuntime = typeof process.env.NEXT_RUNTIME === 'string' && process.env.NEXT_RUNTIME === 'edge'
-
-export async function middleware(request: NextRequest) {
-  // Skip metrics endpoint in Edge runtime
-  if (isEdgeRuntime && request.nextUrl.pathname === '/api/metrics') {
-    return NextResponse.json(
-      { error: 'Metrics endpoint is not available in Edge runtime' },
-      { status: 404 }
-    )
-  }
-
-  return NextResponse.next()
-}
-
-export const config = {
-  matcher: [
-    '/api/metrics',
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+export default authMiddleware({
+  // Routes that can be accessed while signed out
+  publicRoutes: [
+    "/",
+    "/sign-in(.*)",
+    "/sign-up(.*)",
+    "/metrics",
+    "/api/health",
+    "/_next(.*)",  // Allow Next.js static files
+    "/favicon.ico"
   ],
-} 
+  // Routes that can always be accessed, and have
+  // no authentication information
+  ignoredRoutes: [
+    "/(.*).png",
+    "/(.*).ico",
+    "/(.*).svg",
+    "/(.*).jpg",
+    "/(.*).css",
+    "/(.*).js",
+    "/api/metrics",
+    "/_next/static/(.*)"  // Explicitly allow Next.js static files
+  ],
+  debug: process.env.NODE_ENV === 'development'
+});
+
+// Matcher ensures middleware runs on the correct routes
+export const config = {
+  matcher: ['/((?!.*\\..*|_next).*)', '/', '/(api|trpc)(.*)'],
+}; 

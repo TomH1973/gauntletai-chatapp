@@ -1,16 +1,16 @@
-import { Server } from 'socket.io';
 import type { Server as HttpServer } from 'http';
+import { Server } from 'socket.io';
 import { PrismaClient } from '@prisma/client';
-import type { ClientToServerEvents, ServerToClientEvents } from '../types/chat.js';
-import { handleConnection } from './socket/connection.js';
-import { createPresenceManager } from './socket/presence.js';
-import { createMessageHandler } from './socket/messages.js';
-import { createThreadHandler } from './socket/threads.js';
-import { createTypingHandler } from './socket/typing.js';
+import type { ClientToServerEvents, ServerToClientEvents } from '../../types/chat';
+import { handleConnection } from './connection';
+import { createPresenceManager } from './presence';
+import { createMessageHandler } from './messages';
+import { createThreadHandler } from './threads';
+import { createTypingHandler } from './typing';
 
 interface SocketServerDependencies {
   prisma: PrismaClient;
-  metrics: any; // TODO: Add proper metrics type
+  metrics: any;
 }
 
 export function initializeSocketServer(

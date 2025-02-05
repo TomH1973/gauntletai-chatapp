@@ -13,10 +13,18 @@ services:
     user: "1001:1001"
     ports:
       - "3000:3000"
+      - "4000:3001"  # WebSocket port mapped to 4000
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/chatapp?schema=public
       - REDIS_URL=redis://redis:6379
       - NODE_ENV=development
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_Y291cmFnZW91cy1jb3lvdGUtNjMuY2xlcmsuYWNjb3VudHMuZGV2JA
+      - CLERK_SECRET_KEY=sk_test_J6294hiSrQ7SuMcVBgCyi2nq0BAgvjaTAChmkr7Ijj
+      - NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+      - NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+      - NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/chat
+      - NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/chat
+      - NEXT_PUBLIC_CLERK_DOMAIN=courageous-coyote-63.clerk.accounts.dev
     depends_on:
       postgres:
         condition: service_healthy
