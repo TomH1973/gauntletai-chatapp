@@ -1,123 +1,31 @@
-# Chat Application API Documentation
+# API Documentation
+
+## Overview
+
+This document describes the REST and WebSocket APIs available in the chat application.
 
 ## Authentication
 
-All API endpoints require authentication using Clerk. Include the authentication token in the `Authorization` header:
-```
-Authorization: Bearer <token>
-```
+All API endpoints require authentication using JWT tokens provided by Clerk.
 
-## Base URL
-
-```
-Development: http://localhost:3000/api
-Production: https://your-domain.com/api
-```
-
-## Endpoints
-
-### Users
-
-#### Get Current User
+### Headers
 ```http
-GET /users/me
+Authorization: Bearer <jwt_token>
 ```
 
-Response:
-```json
-{
-  "id": "string",
-  "email": "string",
-  "username": "string",
-  "firstName": "string?",
-  "lastName": "string?",
-  "profileImage": "string?",
-  "role": "ADMIN | MODERATOR | USER | GUEST"
-}
-```
-
-### Threads
-
-#### List Threads
-```http
-GET /threads
-```
-
-Query Parameters:
-- `limit` (optional): Number of threads to return (default: 20)
-- `cursor` (optional): Cursor for pagination
-- `q` (optional): Search query to filter threads by title or message content
-
-Response:
-```json
-{
-  "threads": [
-    {
-      "id": "string",
-      "title": "string",
-      "participants": [
-        {
-          "userId": "string",
-          "role": "OWNER | ADMIN | MEMBER",
-          "user": {
-            "id": "string",
-            "username": "string",
-            "profileImage": "string?"
-          }
-        }
-      ],
-      "lastMessage": {
-        "id": "string",
-        "content": "string",
-        "userId": "string",
-        "createdAt": "string"
-      }
-    }
-  ],
-  "nextCursor": "string?"
-}
-```
-
-#### Create Thread
-```http
-POST /threads
-```
-
-Request Body:
-```json
-{
-  "title": "string",
-  "participantIds": ["string"]
-}
-```
-
-#### Update Thread
-```http
-PATCH /threads/:threadId
-```
-
-Request Body:
-```json
-{
-  "title": "string?"
-}
-```
-
-#### Delete Thread
-```http
-DELETE /threads/:threadId
-```
+## REST API Endpoints
 
 ### Messages
 
-#### List Messages
+#### Get Messages
 ```http
-GET /threads/:threadId/messages
+GET /api/threads/{threadId}/messages
 ```
 
 Query Parameters:
 - `limit` (optional): Number of messages to return (default: 50)
-- `cursor` (optional): Cursor for pagination
+- `before` (optional): Cursor for pagination
+- `parentId` (optional): Filter by parent message
 
 Response:
 ```json
@@ -126,160 +34,243 @@ Response:
     {
       "id": "string",
       "content": "string",
-      "userId": "string",
       "threadId": "string",
-      "parentId": "string?",
-      "status": "SENDING | SENT | DELIVERED | READ | ERROR | FAILED",
+      "userId": "string",
       "createdAt": "string",
       "updatedAt": "string",
-      "user": {
-        "id": "string",
-        "username": "string",
-        "profileImage": "string?"
-      },
-      "reactions": [
-        {
-          "emoji": "string",
-          "userId": "string"
-        }
-      ]
+      "attachments": []
     }
   ],
-  "nextCursor": "string?"
+  "nextCursor": "string"
 }
 ```
 
 #### Send Message
 ```http
-POST /threads/:threadId/messages
+POST /api/threads/{threadId}/messages
 ```
 
 Request Body:
 ```json
 {
   "content": "string",
-  "parentId": "string?" // For replies
+  "parentId": "string?",
+  "attachments": [
+    {
+      "id": "string",
+      "type": "string",
+      "url": "string"
+    }
+  ]
 }
 ```
 
-#### Update Message
+### Threads
+
+#### Create Thread
 ```http
-PATCH /messages/:messageId
+POST /api/threads
 ```
 
 Request Body:
 ```json
 {
-  "content": "string"
+  "name": "string",
+  "participants": ["userId"]
 }
 ```
 
-#### Delete Message
+#### Get Thread
 ```http
-DELETE /messages/:messageId
+GET /api/threads/{threadId}
 ```
 
-### Reactions
+### Files
 
-#### Add Reaction
+#### Upload File
 ```http
-POST /messages/:messageId/reactions
+POST /api/upload
 ```
+Content-Type: multipart/form-data
 
-Request Body:
+Form Fields:
+- `file`: File to upload
+- `threadId`: Thread ID
+- `messageId` (optional): Message ID
+
+Response:
 ```json
 {
-  "emoji": "string"
+  "id": "string",
+  "url": "string",
+  "filename": "string",
+  "mimeType": "string",
+  "size": number
 }
-```
-
-#### Remove Reaction
-```http
-DELETE /messages/:messageId/reactions/:emoji
 ```
 
 ## WebSocket Events
 
 ### Client to Server
 
+#### Join Thread
 ```typescript
-interface ClientToServerEvents {
-  // Join a thread's room
-  'thread:join': (threadId: string) => void;
-  
-  // Leave a thread's room
-  'thread:leave': (threadId: string) => void;
-  
-  // Start typing in a thread
-  'typing:start': (threadId: string) => void;
-  
-  // Stop typing in a thread
-  'typing:stop': (threadId: string) => void;
-  
-  // Mark messages as delivered
-  'message:delivered': (messageId: string) => void;
-  
-  // Mark messages as read
-  'message:read': (messageId: string) => void;
-}
+socket.emit('thread:join', threadId: string)
+```
+
+#### Send Message
+```typescript
+socket.emit('message:send', {
+  content: string,
+  threadId: string,
+  parentId?: string,
+  attachments?: Array<{
+    id: string,
+    type: string,
+    url: string
+  }>
+})
+```
+
+#### Typing Indicator
+```typescript
+socket.emit('typing:start', threadId: string)
+socket.emit('typing:stop', threadId: string)
 ```
 
 ### Server to Client
 
+#### New Message
 ```typescript
-interface ServerToClientEvents {
-  // New message in thread
-  'message:new': (message: Message) => void;
-  
-  // Message status update
-  'message:status': (data: { messageId: string, status: MessageStatus }) => void;
-  
-  // Typing indicator update
-  'typing:update': (data: { threadId: string, users: Array<{ id: string, username: string }> }) => void;
-  
-  // User presence update
-  'presence:update': (data: { userId: string, isOnline: boolean, lastSeen?: string }) => void;
-  
-  // Error events
-  'error': (error: { code: string, message: string }) => void;
-}
+socket.on('message:new', (message: Message) => {})
+```
+
+#### Typing Update
+```typescript
+socket.on('typing:update', ({
+  threadId: string,
+  userId: string,
+  isTyping: boolean
+}) => {})
+```
+
+#### Presence Update
+```typescript
+socket.on('presence:update', ({
+  userId: string,
+  isOnline: boolean,
+  lastSeen?: string
+}) => {})
 ```
 
 ## Error Handling
 
-All endpoints return standard HTTP status codes:
-
-- 200: Success
-- 400: Bad Request
-- 401: Unauthorized
-- 403: Forbidden
-- 404: Not Found
-- 429: Too Many Requests
-- 500: Internal Server Error
-
-Error Response Format:
+### Error Response Format
 ```json
 {
-  "error": {
-    "code": "string",
-    "message": "string",
-    "details": "string?" // Only in development
-  }
+  "code": "string",
+  "message": "string",
+  "details?: object
 }
 ```
 
+### Common Error Codes
+- `UNAUTHORIZED`: Authentication required
+- `FORBIDDEN`: Insufficient permissions
+- `NOT_FOUND`: Resource not found
+- `VALIDATION_ERROR`: Invalid input
+- `RATE_LIMITED`: Too many requests
+- `INTERNAL_ERROR`: Server error
+
 ## Rate Limiting
 
-- API endpoints: 100 requests per minute per IP
-- WebSocket events: 60 events per minute per connection
-- Message sending: 30 messages per minute per user
+- API requests: 100 requests per minute per user
+- WebSocket messages: 60 messages per minute per user
+- File uploads: 10 uploads per minute per user
 
-## Security
+## Pagination
 
-- All requests must use HTTPS
-- Authentication via Clerk
-- CORS configured for specific origins
-- Rate limiting per IP and user
-- Input validation using Zod
-- SQL injection prevention via Prisma
-- XSS prevention via content sanitization 
+API endpoints that return lists support cursor-based pagination:
+
+Query Parameters:
+- `limit`: Number of items per page
+- `before`: Cursor for previous page
+- `after`: Cursor for next page
+
+Response includes:
+```json
+{
+  "items": [],
+  "nextCursor": "string",
+  "prevCursor": "string",
+  "total": number
+}
+```
+
+## WebSocket Connection
+
+### Connection URL
+```
+ws://domain.com/socket?token=<jwt_token>
+```
+
+### Reconnection Strategy
+- Initial delay: 1 second
+- Maximum delay: 30 seconds
+- Exponential backoff with jitter
+- Maximum retries: 10
+
+### Heartbeat
+- Ping interval: 30 seconds
+- Pong timeout: 10 seconds
+- Automatic reconnection on timeout
+
+## Data Types
+
+### Message
+```typescript
+interface Message {
+  id: string;
+  content: string;
+  threadId: string;
+  userId: string;
+  parentId?: string;
+  attachments?: Attachment[];
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+### Thread
+```typescript
+interface Thread {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  participants: User[];
+  lastMessage?: Message;
+}
+```
+
+### User
+```typescript
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  image?: string;
+}
+```
+
+### Attachment
+```typescript
+interface Attachment {
+  id: string;
+  url: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  isPublic: boolean;
+}
+``` 

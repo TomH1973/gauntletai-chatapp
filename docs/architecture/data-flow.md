@@ -1,194 +1,114 @@
-# Data Flow Architecture
+# Data Flow Documentation
 
-## Core Data Flows
+## System Overview
 
-### 1. Message Flow
+The chat application uses a multi-layered architecture with real-time communication capabilities. Below are the key data flows in the system.
+
+## Message Flow
+
 ```mermaid
-sequenceDiagram
-    participant Client
-    participant WebSocket
-    participant API
-    participant Database
-    participant FileStorage
-
-    Client->>WebSocket: Send Message
-    WebSocket->>Database: Persist Message
-    WebSocket-->>Client: Optimistic Update
-    WebSocket->>WebSocket: Broadcast to Thread
-    
-    alt Has Attachments
-        Client->>API: Upload File
-        API->>FileStorage: Store File
-        API->>Database: Store Metadata
-        API-->>Client: File URL
-    end
+graph TD
+    Client[Client Browser] -->|1. Send Message| WSS[WebSocket Server]
+    Client -->|2. File Upload| API[API Server]
+    WSS -->|3. Validate & Process| Auth[Auth Service]
+    WSS -->|4. Store Message| DB[(PostgreSQL)]
+    WSS -->|5. Cache Message| Redis[(Redis)]
+    API -->|6. Store Files| S3[AWS S3]
+    S3 -->|7. CDN Distribution| CDN[CloudFront CDN]
+    WSS -->|8. Broadcast| Clients[Other Clients]
+    Redis -->|9. Read Cache| WSS
+    DB -->|10. Persist Data| WSS
 ```
 
-### 2. Authentication Flow
+## Authentication Flow
+
 ```mermaid
 sequenceDiagram
+    participant User
     participant Client
+    participant API
     participant Clerk
-    participant API
-    participant WebSocket
-    
-    Client->>Clerk: Login Request
+    participant Redis
+    participant DB
+
+    User->>Client: Login Request
+    Client->>Clerk: Authenticate
     Clerk-->>Client: JWT Token
-    Client->>API: API Request + JWT
+    Client->>API: API Request + Token
     API->>Clerk: Validate Token
+    API->>Redis: Cache Session
+    API->>DB: Log Access
     API-->>Client: Response
-    
-    Client->>WebSocket: Connect + JWT
-    WebSocket->>Clerk: Validate Token
-    WebSocket-->>Client: Connected
 ```
 
-### 3. Thread Management Flow
+## Real-time Updates Flow
+
 ```mermaid
-sequenceDiagram
-    participant Client
-    participant API
-    participant Database
-    participant WebSocket
-    
-    Client->>API: Create Thread
-    API->>Database: Store Thread
-    API->>WebSocket: Notify Participants
-    WebSocket-->>Client: Thread Update
+graph LR
+    Client[Client] -->|1. Connect| WSS[WebSocket Server]
+    WSS -->|2. Join Room| Redis[(Redis PubSub)]
+    Client -->|3. User Action| WSS
+    WSS -->|4. Broadcast| Redis
+    Redis -->|5. Notify| WSS
+    WSS -->|6. Update| Clients[Connected Clients]
 ```
 
-## Data Consistency
+## File Handling Flow
 
-### 1. Optimistic Updates
-- Client updates UI immediately
-- Server confirms change
-- Rollback on failure
-- Version tracking for conflicts
-
-### 2. Real-time Sync
-```typescript
-interface SyncState {
-  version: number;
-  lastSyncedAt: string;
-  pendingOperations: Operation[];
-}
-
-interface Operation {
-  type: 'create' | 'update' | 'delete';
-  resource: string;
-  data: any;
-  timestamp: string;
-}
+```mermaid
+graph TD
+    Client[Client] -->|1. Upload Request| API[API Server]
+    API -->|2. Validate| Security[Security Scanner]
+    API -->|3. Store| S3[AWS S3]
+    S3 -->|4. Distribute| CDN[CloudFront CDN]
+    API -->|5. Create Record| DB[(PostgreSQL)]
+    API -->|6. Send Message| WSS[WebSocket Server]
+    WSS -->|7. Notify| Clients[Other Clients]
+    Clients -->|8. Download| CDN
 ```
 
-### 3. Conflict Resolution
-- Last-write-wins for simple updates
-- Three-way merge for complex changes
-- Client-side conflict resolution UI
-- Server-side validation
+## Data Storage Hierarchy
 
-## State Management
-
-### 1. Client State
-```typescript
-interface ClientState {
-  user: {
-    current: User;
-    online: boolean;
-    preferences: UserPreferences;
-  };
-  threads: {
-    active: Thread[];
-    archived: Thread[];
-    unread: number;
-  };
-  messages: {
-    byThread: Record<string, Message[]>;
-    pending: Message[];
-    failed: Message[];
-  };
-  ui: {
-    activeThread: string | null;
-    loadingStates: Record<string, boolean>;
-    errors: Error[];
-  };
-}
+```mermaid
+graph TD
+    App[Application] -->|Hot Data| Redis[(Redis Cache)]
+    App -->|Persistent Data| DB[(PostgreSQL)]
+    App -->|File Storage| S3[AWS S3]
+    App -->|Static Assets| CDN[CloudFront CDN]
+    Redis -->|Expire| DB
+    DB -->|Backup| S3
 ```
 
-### 2. Server State
-```typescript
-interface ServerState {
-  connections: {
-    userId: string;
-    socketId: string;
-    lastActivity: Date;
-    subscriptions: string[];
-  }[];
-  rateLimits: {
-    [key: string]: {
-      count: number;
-      resetAt: Date;
-    };
-  };
-  caches: {
-    messages: LRUCache<string, Message>;
-    threads: LRUCache<string, Thread>;
-    users: LRUCache<string, User>;
-  };
-}
-```
+## Key Components
 
-## Data Persistence
+1. **Client Layer**
+   - Next.js Frontend
+   - React Components
+   - WebSocket Client
+   - Service Workers
 
-### 1. Database Operations
-- Connection pooling
-- Prepared statements
-- Transaction management
-- Cascade operations
+2. **API Layer**
+   - REST Endpoints
+   - WebSocket Server
+   - File Processing
+   - Authentication
 
-### 2. Caching Strategy
-```typescript
-interface CacheConfig {
-  messages: {
-    maxSize: number;    // 1000
-    ttl: number;        // 5 minutes
-    updateOnRead: boolean;
-  };
-  threads: {
-    maxSize: number;    // 100
-    ttl: number;        // 15 minutes
-    updateOnRead: boolean;
-  };
-  users: {
-    maxSize: number;    // 500
-    ttl: number;        // 30 minutes
-    updateOnRead: boolean;
-  };
-}
-```
+3. **Service Layer**
+   - Message Processing
+   - File Handling
+   - User Management
+   - Thread Management
 
-### 3. File Storage
-- Direct upload to storage
-- Signed URLs for access
-- Metadata in database
-- Cleanup of orphaned files
+4. **Storage Layer**
+   - PostgreSQL (Primary Data)
+   - Redis (Caching/PubSub)
+   - S3 (File Storage)
+   - CloudFront (CDN)
 
 ## Performance Considerations
 
-### 1. Message Delivery
-- Maximum payload size: 100KB
-- Batch updates when possible
-- Compress payloads > 10KB
-- Rate limit per client: 60/minute
-
-### 2. Connection Management
-- Max connections per user: 5
-- Heartbeat interval: 30s
-- Reconnection backoff: exponential
-- Connection timeout: 120s
-
-### 3. Database Load
-- Max connections: 20
-- Query timeout: 5s
-- Slow query threshold: 1s
-- Index usage monitoring 
+- Redis caching for frequently accessed data
+- WebSocket connection pooling
+- CDN for static assets and files
+- Database query optimization
+- Message batching and throttling 
