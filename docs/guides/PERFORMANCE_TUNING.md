@@ -34,20 +34,56 @@ metrics.messageQueueLength.set(batchQueues.size);
 - Redis operation batching threshold: 1000 ops/sec
 
 ### 2. Connection Management
+
+⚠️ **Critical Issues**:
+- Current default Socket.IO settings causing frequent reconnections
+- No exponential backoff strategy
+- Missing heartbeat monitoring
+- Connection instability under load
+
 ```typescript
-// Adjust in Socket.IO configuration
+// Recommended Socket.IO configuration
 const io = new Server(httpServer, {
-  pingTimeout: 30000,
-  pingInterval: 10000,
+  pingTimeout: 60000,        // Increased from 30s to handle network jitter
+  pingInterval: 25000,       // Increased from 10s to reduce overhead
   upgradeTimeout: 10000,
-  maxHttpBufferSize: 1e6
+  maxHttpBufferSize: 1e6,
+  connectTimeout: 45000,     // Added to handle slow connections
+  transports: ['websocket'], // Force WebSocket transport
+  allowUpgrades: false,      // Prevent transport switching
+  retries: 3,               // Maximum reconnection attempts
+  reconnectionDelay: 1000,  // Start with 1s delay
+  reconnectionDelayMax: 5000, // Max 5s delay
+  reconnectionAttempts: 5,   // Give up after 5 attempts
+});
+
+// Add connection monitoring
+io.on('connection', (socket) => {
+  const startTime = Date.now();
+  
+  socket.conn.on('packet', (packet) => {
+    if (packet.type === 'ping') {
+      metrics.latency.observe(Date.now() - startTime);
+    }
+  });
+
+  socket.conn.on('close', (reason) => {
+    metrics.disconnections.inc({ reason });
+  });
 });
 ```
 
 #### Tuning Parameters
-- `pingTimeout`: 20-40s (stability vs resource usage)
-- `pingInterval`: 5-15s (responsiveness vs overhead)
+- `pingTimeout`: 45-60s (stability vs resource usage)
+- `pingInterval`: 20-30s (responsiveness vs overhead)
 - `maxHttpBufferSize`: 1-5MB (memory vs message size)
+- `reconnectionDelay`: 1-5s (client recovery vs server load)
+
+#### Monitoring Recommendations
+- Track connection duration distribution
+- Monitor reconnection frequency
+- Alert on abnormal disconnect rates
+- Log connection drop reasons
 
 ### 3. Redis Optimization
 ```typescript

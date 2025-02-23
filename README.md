@@ -2,21 +2,31 @@
 
 A real-time chat application built with Next.js, WebSocket, and TypeScript.
 
+## Project Status
+
+⚠️ **Critical Issues**
+- WebSocket stability issues (frequent disconnects, see [Performance Tuning Guide](docs/guides/PERFORMANCE_TUNING.md))
+- Incomplete security implementation
+- Missing rate limiting
+- Insufficient error handling
+
+See [CHECKLIST.md](CHECKLIST.md) for detailed status and next steps.
+
 ## Documentation Structure
 
 ### Core Documentation
 - [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) - System design, API, and implementation details
-- [`CHECKLIST.md`](docs/CHECKLIST.md) - Project status and implementation progress
+- [`CHECKLIST.md`](CHECKLIST.md) - Project status and critical issues ⚠️
 - [`SECURITY.md`](docs/SECURITY.md) - Security architecture and implementation
+- [`PERFORMANCE_TUNING.md`](docs/guides/PERFORMANCE_TUNING.md) - Performance optimization and issues
 - [`DEPLOYMENT.md`](docs/DEPLOYMENT.md) - Deployment and infrastructure guides
-- [`TESTING.md`](docs/TESTING.md) - Testing strategy and procedures
 
 ### Additional Resources
-- [`guides/`](docs/guides/) - Specific implementation guides
+- [`guides/`](docs/guides/) - Implementation guides and troubleshooting
 - [`diagrams/`](docs/diagrams/) - System architecture diagrams
 - [`api/`](docs/api/) - API documentation
 
-> Note: Some older documentation files have been deprecated and consolidated into the above structure. Look for the new unified documents.
+> Note: Documentation is being consolidated. Some files may be outdated.
 
 ## Quick Start
 
