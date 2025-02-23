@@ -89,13 +89,16 @@ npm run dev
 - **Database**: PostgreSQL 15, Redis 7
 - **Authentication**: Clerk
 - **Monitoring**: Prometheus, Grafana
-- **Testing**: Jest, Cypress
+- **Testing**: Jest, Cypress, k6 (performance testing)
 
 ## Development
 
 ```bash
 # Run tests
 npm test
+
+# Run performance tests (requires k6)
+npm run test:perf
 
 # Run linting
 npm run lint
@@ -106,6 +109,8 @@ npm run type-check
 # Format code
 npm run format
 ```
+
+For detailed performance testing instructions, see [Performance Tuning Guide](docs/guides/PERFORMANCE_TUNING.md).
 
 ## Contributing
 
