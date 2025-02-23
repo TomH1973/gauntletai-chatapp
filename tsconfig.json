@@ -26,7 +26,7 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./app/*"]
+      "@/*": ["./src/*", "./app/*", "./*"]
     },
     "allowJs": true,
     "strict": false,
@@ -46,6 +46,12 @@
   "include": [
     "./prisma/**/*.ts",
     "./src/**/*.ts",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    "./app/**/*.ts",
+    "./app/**/*.tsx",
+    "./components/**/*.ts",
+    "./components/**/*.tsx",
+    "./hooks/**/*.ts",
+    "./hooks/**/*.tsx"
   ]
 }

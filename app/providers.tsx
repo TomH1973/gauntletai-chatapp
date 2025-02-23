@@ -1,10 +1,12 @@
 'use client';
 
+import './globals.css';
 import { ClerkProvider } from '@clerk/nextjs';
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useSessionManager } from '@/lib/auth/session';
+import { useRouter } from 'next/navigation';
 
 // Enhanced error fallback component
 function ErrorFallback({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) {
@@ -95,6 +97,7 @@ function DebugComponent({ children }: { children: React.ReactNode }) {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
       queries: {
@@ -204,10 +207,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             card: 'bg-white dark:bg-gray-800 shadow-xl'
           }
         }}
-        navigate={(to) => {
-          console.log('Navigation:', { to, from: window.location.pathname });
-          window.location.href = to;
-        }}
+        navigate={(to) => router.push(to)}
       >
         <QueryClientProvider client={queryClient}>
           <DebugComponent>

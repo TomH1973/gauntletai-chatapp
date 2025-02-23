@@ -135,6 +135,31 @@ services:
     networks:
       - chatapp-network
 
+  mongodb:
+    image: mongo:latest
+    container_name: chatapp-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=example
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: chatapp-server
+    ports:
+      - "4000:4000"
+    environment:
+      - MONGODB_URI=mongodb://root:example@mongodb:27017/chatapp?authSource=admin
+      - JWT_SECRET=your-secret-key
+      - NODE_ENV=development
+    depends_on:
+      - mongodb
+
 volumes:
   postgres_data:
   redis_data:
@@ -145,6 +170,7 @@ volumes:
   websocket_node_modules:
   minio_data:
     driver: local
+  mongodb_data:
 
 networks:
   chatapp-network:
