@@ -1,0 +1,15 @@
+[33mcommit a53b410a14dab5c665d1db672d00cc119c646506[m[33m ([m[1;36mHEAD -> [m[1;32mstaging[m[33m, [m[1;31morigin/staging[m[33m)[m
+Author: Tom H <tom.holbrook@gauntletai.com>
+Date:   Sun Feb 23 19:15:44 2025 +0000
+
+    feat: enhance auth flow and server configuration - Update authentication buttons and session handling - Improve server Dockerfile configuration - Enhance user model and middleware - Update chat components for better UX - Refactor login component for improved security
+
+M	components/AuthButtons.tsx
+M	server/Dockerfile
+M	server/index.js
+M	server/middleware/auth.js
+M	server/models/User.js
+M	src/App.js
+M	src/components/ChatWindow.js
+M	src/components/Login.js
+M	src/lib/auth/session.ts

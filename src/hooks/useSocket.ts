@@ -1,55 +1,49 @@
 import { useState, useEffect } from 'react';
-import { Socket, io } from 'socket.io-client';
+import { Manager } from 'socket.io-client';
 import type { ServerToClientEvents, ClientToServerEvents } from '@/types/socket';
 
 interface UseSocketReturn {
-  socket: Socket<ServerToClientEvents, ClientToServerEvents>;
+  socket: any | null;  // TODO: Fix type when Socket.IO types are working
   isConnected: boolean;
   isReconnecting: boolean;
 }
 
 export function useSocket(): UseSocketReturn {
-  const [socket, setSocket] = useState<Socket<ServerToClientEvents, ClientToServerEvents>>();
+  const [socket, setSocket] = useState<any | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
 
   useEffect(() => {
-    const socket = io('http://localhost:3001', {
-      withCredentials: true,
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 20000,
+    if (typeof window === 'undefined') return;
+
+    const manager = new Manager(process.env.REACT_APP_API_URL || 'http://localhost:3001', {
+      autoConnect: true,
+      auth: {
+        token: window.localStorage.getItem('token')
+      }
     });
 
-    setSocket(socket);
+    const newSocket = manager.socket('/');
 
-    socket.on('connect', () => {
+    newSocket.on('connect', () => {
       setIsConnected(true);
       setIsReconnecting(false);
     });
 
-    socket.on('disconnect', () => {
+    newSocket.on('disconnect', () => {
       setIsConnected(false);
     });
 
-    socket.on('reconnecting', () => {
+    newSocket.on('connect_error', () => {
       setIsReconnecting(true);
     });
 
-    socket.on('reconnect_failed', () => {
-      setIsReconnecting(false);
-    });
+    setSocket(newSocket);
 
     return () => {
-      socket.disconnect();
+      newSocket.disconnect();
     };
   }, []);
 
-  return {
-    socket: socket!,
-    isConnected,
-    isReconnecting,
-  };
+  return { socket, isConnected, isReconnecting };
 } 

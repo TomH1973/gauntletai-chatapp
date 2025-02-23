@@ -1,131 +1,104 @@
-# Chat Application
+# Chat App with AI Integration
 
-A real-time chat application built with Next.js, WebSocket, and TypeScript.
+A real-time chat application with AI responses and MongoDB persistence.
 
-## Project Status
+## Features
 
-⚠️ **Critical Issues**
-- WebSocket stability issues (frequent disconnects, see [Performance Tuning Guide](docs/guides/PERFORMANCE_TUNING.md))
-- Incomplete security implementation
-- Missing rate limiting
-- Insufficient error handling
+- User authentication with JWT
+- Real-time messaging with Socket.IO
+- Message persistence with MongoDB
+- AI response generation
+- Modern UI with Tailwind CSS
 
-See [CHECKLIST.md](CHECKLIST.md) for detailed status and next steps.
+## Prerequisites
 
-## Documentation Structure
+- Node.js (v14 or later)
+- MongoDB (v4.4 or later)
+- npm or yarn
 
-### Core Documentation
-- [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) - System design, API, and implementation details
-- [`CHECKLIST.md`](CHECKLIST.md) - Project status and critical issues ⚠️
-- [`SECURITY.md`](docs/SECURITY.md) - Security architecture and implementation
-- [`PERFORMANCE_TUNING.md`](docs/guides/PERFORMANCE_TUNING.md) - Performance optimization and issues
-- [`DEPLOYMENT.md`](docs/DEPLOYMENT.md) - Deployment and infrastructure guides
+## Setup
 
-### Additional Resources
-- [`guides/`](docs/guides/) - Implementation guides and troubleshooting
-- [`diagrams/`](docs/diagrams/) - System architecture diagrams
-- [`api/`](docs/api/) - API documentation
-
-> Note: Documentation is being consolidated. Some files may be outdated.
-
-## Quick Start
-
+1. Clone the repository:
 ```bash
-# Clone the repository
 git clone <repository-url>
-
-# Install dependencies
-npm install
-
-# Start development environment
-docker-compose up -d
-
-# Run database migrations
-npx prisma migrate dev
-
-# Start the development server
-npm run dev
+cd chatapp
 ```
 
-## Documentation
+2. Install dependencies:
+```bash
+# Install server dependencies
+cd server
+npm install
 
-### 1. Getting Started
-- [Project Overview](docs/README.md)
-- [Architecture Overview](docs/architecture/system-overview.md)
-- [Development Setup](docs/setup/README.md)
-- [Contributing Guidelines](docs/guides/CONTRIBUTING.md)
+# Install client dependencies
+cd ..
+npm install
+```
 
-### 2. Core Features
-- [Authentication](docs/api/README.md#authentication)
-- [Real-time Communication](docs/architecture/data-flow.md)
-- [Message Threading](docs/schema/README.md#message-threading)
-- [File Handling](docs/architecture/system-overview.md#file-handling)
+3. Configure environment variables:
+- Copy `.env.example` to `.env`
+- Update the values as needed
 
-### 3. Technical Documentation
-- [API Reference](docs/api/README.md)
-- [Database Schema](docs/database/README.md)
-- [Component Library](docs/components/index.md)
-- [Error Handling](docs/error-handling/taxonomy.md)
+4. Start MongoDB:
+```bash
+# Using Docker
+docker run -d -p 27017:27017 --name chatapp-mongo mongo:latest
 
-### 4. Guides
-- [Troubleshooting](docs/guides/TROUBLESHOOTING.md)
-- [Migration Guide](docs/guides/MIGRATIONS.md)
-- [Security Guidelines](docs/guides/security.md)
-- [Performance Optimization](docs/architecture/data-flow.md#performance-considerations)
+# Or use your local MongoDB installation
+```
 
-### 5. Deployment
-- [Deployment Guide](docs/deployment/README.md)
-- [Monitoring Setup](docs/monitoring/README.md)
-- [Security Checklist](docs/security/README.md)
-- [Backup & Recovery](docs/guides/TROUBLESHOOTING.md#recovery-procedures)
+5. Start the server:
+```bash
+cd server
+npm start
+```
 
-## Key Features
+6. Start the client (in a new terminal):
+```bash
+npm start
+```
 
-- Real-time messaging with WebSocket support
-- Message threading and replies
-- File attachments and media preview
-- Rich text support with markdown
-- @mentions and notifications
-- Emoji reactions
-- User presence and typing indicators
-- Search functionality
-- Error handling and recovery
-- Performance monitoring
-
-## Tech Stack
-
-- **Frontend**: Next.js 14, React 18, TailwindCSS
-- **Backend**: Node.js, Socket.IO, Prisma ORM
-- **Database**: PostgreSQL 15, Redis 7
-- **Authentication**: Clerk
-- **Monitoring**: Prometheus, Grafana
-- **Testing**: Jest, Cypress, k6 (performance testing)
+The application will be available at http://localhost:3000
 
 ## Development
 
-```bash
-# Run tests
-npm test
+- Server runs on port 3001
+- Client runs on port 3000
+- MongoDB runs on port 27017
 
-# Run performance tests (requires k6)
-npm run test:perf
+## API Endpoints
 
-# Run linting
-npm run lint
+### Authentication
+- POST `/api/auth/register` - Register a new user
+- POST `/api/auth/login` - Login user
 
-# Run type checking
-npm run type-check
+### Messages
+- GET `/api/messages` - Get recent messages
+- POST `/api/messages` - Create a new message
 
-# Format code
-npm run format
-```
+## WebSocket Events
 
-For detailed performance testing instructions, see [Performance Tuning Guide](docs/guides/PERFORMANCE_TUNING.md).
+- `message` - Send/receive chat messages
+- `error` - Error notifications
+
+## Environment Variables
+
+### Server
+- `PORT` - Server port (default: 3001)
+- `MONGODB_URI` - MongoDB connection string
+- `JWT_SECRET` - JWT signing secret
+
+### Client
+- `REACT_APP_API_URL` - API base URL
 
 ## Contributing
 
-Please read our [Contributing Guidelines](docs/guides/CONTRIBUTING.md) before submitting a Pull Request.
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
+MIT 
