@@ -1,0 +1,137 @@
+groups:
+  - name: performance
+    rules:
+      - alert: HighMessageLatency
+        expr: histogram_quantile(0.95, rate(message_delivery_duration_seconds_bucket[5m])) > 0.120
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High message delivery latency"
+          description: "Message delivery p95 latency is above 120ms"
+
+      - alert: CriticalMessageLatency
+        expr: histogram_quantile(0.95, rate(message_delivery_duration_seconds_bucket[5m])) > 0.150
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical message delivery latency"
+          description: "Message delivery p95 latency is above 150ms"
+
+      - alert: HighSearchLatency
+        expr: histogram_quantile(0.95, rate(search_duration_seconds_bucket[5m])) > 0.600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High search latency"
+          description: "Search p95 latency is above 600ms"
+
+      - alert: CriticalSearchLatency
+        expr: histogram_quantile(0.95, rate(search_duration_seconds_bucket[5m])) > 0.750
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical search latency"
+          description: "Search p95 latency is above 750ms"
+
+      - alert: HighThreadLoadLatency
+        expr: histogram_quantile(0.95, rate(thread_load_duration_seconds_bucket[5m])) > 0.240
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High thread load latency"
+          description: "Thread load p95 latency is above 240ms"
+
+      - alert: CriticalThreadLoadLatency
+        expr: histogram_quantile(0.95, rate(thread_load_duration_seconds_bucket[5m])) > 0.300
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical thread load latency"
+          description: "Thread load p95 latency is above 300ms"
+
+      - alert: HighErrorRate
+        expr: rate(error_total[5m]) / rate(request_total[5m]) > 0.004
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate"
+          description: "Error rate is above 0.4%"
+
+      - alert: CriticalErrorRate
+        expr: rate(error_total[5m]) / rate(request_total[5m]) > 0.005
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical error rate"
+          description: "Error rate is above 0.5%"
+
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total[5m]) * 100 > 64
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is above 64%"
+
+      - alert: CriticalCPUUsage
+        expr: rate(process_cpu_seconds_total[5m]) * 100 > 80
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical CPU usage"
+          description: "CPU usage is above 80%"
+
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes / (4 * 1024 * 1024 * 1024) > 0.64
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is above 64% of 4GB"
+
+      - alert: CriticalMemoryUsage
+        expr: process_resident_memory_bytes / (4 * 1024 * 1024 * 1024) > 0.8
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical memory usage"
+          description: "Memory usage is above 80% of 4GB"
+
+      - alert: HighCacheMissRate
+        expr: rate(cache_miss_total[5m]) / rate(cache_access_total[5m]) > 0.24
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High cache miss rate"
+          description: "Cache miss rate is above 24%"
+
+      - alert: CriticalCacheMissRate
+        expr: rate(cache_miss_total[5m]) / rate(cache_access_total[5m]) > 0.3
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical cache miss rate"
+          description: "Cache miss rate is above 30%"
+
+      - alert: HighConnectionDropRate
+        expr: rate(websocket_disconnections_total[5m]) / rate(websocket_connections_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High connection drop rate"
+          description: "WebSocket connection drop rate is above 1%" 

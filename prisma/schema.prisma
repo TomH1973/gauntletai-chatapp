@@ -1,10 +1,14 @@
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["fullTextIndex"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum MessageStatus {
@@ -25,83 +29,123 @@ enum FileType {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  clerkId   String    @unique
-  email     String    @unique
-  name      String
-  image     String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  // Relations
-  messages     Message[]
-  messageEdits MessageEdit[]
-  threads      ThreadParticipant[]
-  attachments  Attachment[]
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  image         String?
+  isActive      Boolean   @default(false)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastSeen      DateTime?
+  messages      Message[]
+  threads       ThreadParticipant[]
+  reactions     MessageReaction[]
+  uploads       Attachment[]
+  edits         MessageEdit[]
 
   @@index([email])
-  @@index([createdAt])
+  @@index([lastSeen])
+  @@index([isActive])
 }
 
 model Thread {
   id            String    @id @default(cuid())
   name          String
+  title         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   lastMessageAt DateTime?
+  messages      Message[]
+  participants  ThreadParticipant[]
+  settings      ThreadSettings?
 
-  // Relations
-  messages     Message[]
-  participants ThreadParticipant[]
-
-  @@index([createdAt])
   @@index([lastMessageAt])
+  @@index([updatedAt])
+}
+
+model ThreadSettings {
+  id              String   @id @default(cuid())
+  threadId        String   @unique
+  thread          Thread   @relation(fields: [threadId], references: [id])
+  isPrivate       Boolean  @default(false)
+  allowReactions  Boolean  @default(true)
+  allowReplies    Boolean  @default(true)
+  allowAttachments Boolean @default(true)
+  updatedBy       String
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+
+  @@index([threadId])
 }
 
 model ThreadParticipant {
+  id        String   @id @default(cuid())
   userId    String
   threadId  String
-  role      String    @default("MEMBER")
-  joinedAt  DateTime  @default(now())
-  leftAt    DateTime?
+  joinedAt  DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  thread    Thread   @relation(fields: [threadId], references: [id])
 
-  // Relations
-  user    User    @relation(fields: [userId], references: [id])
-  thread  Thread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
-
-  @@id([userId, threadId])
+  @@unique([userId, threadId])
   @@index([userId])
   @@index([threadId])
-  @@index([role])
 }
 
 model Message {
-  id        String       @id @default(cuid())
-  content   String
-  userId    String
-  threadId  String
-  parentId  String?     // Parent message ID for replies
-  status    MessageStatus @default(SENDING)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-
-  // Relations
-  user      User         @relation(fields: [userId], references: [id])
-  thread    Thread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  parent    Message?     @relation("MessageReplies", fields: [parentId], references: [id], onDelete: SetNull)
-  replies   Message[]    @relation("MessageReplies")
-  edits     MessageEdit[]
-  reactions Reaction[]
+  id          String       @id @default(cuid())
+  content     String
+  userId      String
+  threadId    String
+  parentId    String?
+  status      MessageStatus @default(SENT)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  user        User         @relation(fields: [userId], references: [id])
+  thread      Thread       @relation(fields: [threadId], references: [id])
+  parent      Message?     @relation("MessageReplies", fields: [parentId], references: [id])
+  replies     Message[]    @relation("MessageReplies")
+  reactions   MessageReaction[]
   attachments Attachment[]
+  edits       MessageEdit[]
+  messageReactions Reaction[]
 
-  @@index([userId])
   @@index([threadId])
+  @@index([userId])
   @@index([parentId])
   @@index([status])
   @@index([createdAt])
+}
+
+model MessageReaction {
+  id        String   @id @default(cuid())
+  emoji     String
+  userId    String
+  messageId String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  message   Message  @relation(fields: [messageId], references: [id])
+
+  @@unique([userId, messageId, emoji])
+  @@index([messageId])
+  @@index([userId])
+}
+
+// For full-text search
+model MessageSearch {
+  id          String   @id
+  content     String
+  messageId   String
+  threadId    String
+  userId      String
+  createdAt   DateTime
+
+  @@index([content], map: "message_search_content_idx")
+  @@index([threadId])
+  @@index([userId])
+  @@index([createdAt])
   @@index([threadId, createdAt])
   @@index([userId, createdAt])
-  @@index([content])
 }
 
 model MessageEdit {
@@ -141,19 +185,19 @@ model Attachment {
   url       String
   size      Int
   mimeType  String
-  fileType  FileType
+  fileType  String
   isPublic  Boolean  @default(false)
   isDeleted Boolean  @default(false)
-  
+  messageId String?
   uploaderId String
-  uploader   User     @relation(fields: [uploaderId], references: [id])
-  messageId  String?
-  message    Message? @relation(fields: [messageId], references: [id])
-  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  message   Message? @relation(fields: [messageId], references: [id])
+  uploader  User    @relation(fields: [uploaderId], references: [id])
 
-  @@index([uploaderId])
   @@index([messageId])
+  @@index([uploaderId])
   @@index([fileType])
+  @@index([isPublic])
+  @@index([isDeleted])
 } 

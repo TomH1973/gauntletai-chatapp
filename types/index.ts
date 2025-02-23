@@ -1,14 +1,10 @@
 export interface User {
   id: string;
+  name: string;
   email: string;
-  username: string;
-  firstName: string | null;
-  lastName: string | null;
-  profileImage: string | null;
-  createdAt: string;
-  updatedAt: string;
-  lastLoginAt: string | null;
-  isActive: boolean;
+  image?: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Session {
@@ -21,24 +17,26 @@ export interface Session {
 
 export interface Thread {
   id: string;
-  title: string | null;
-  createdAt: string;
-  updatedAt: string;
+  title: string;
+  name?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  lastMessageAt?: Date;
   participants: User[];
+  messages: Message[];
+  isGroup: boolean;
 }
 
 export interface Message {
   id: string;
   content: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: string | Date;
   userId: string;
   user: User;
   threadId: string;
-  thread: Thread;
-  parentId: string | null;
-  parent?: Message;
-  replies: Message[];
+  parentId?: string;
+  reactions?: MessageReaction[];
+  attachments?: MessageAttachment[];
 }
 
 export interface Notification {
@@ -51,8 +49,47 @@ export interface Notification {
   createdAt: string;
 }
 
-export type ApiResponse<T> = {
+export interface MessageReaction {
+  id: string;
+  type: string;
+  userId: string;
+  messageId: string;
+  createdAt: Date;
+  user: User;
+}
+
+export interface MessageAttachment {
+  id: string;
+  type: string;
+  url: string;
+  name: string;
+  size: number;
+  messageId: string;
+  createdAt: Date;
+}
+
+export interface ThreadParticipant {
+  userId: string;
+  threadId: string;
+  joinedAt: Date;
+  leftAt?: Date;
+  role: 'owner' | 'admin' | 'member';
+  user: User;
+  thread: Thread;
+}
+
+export interface SearchResult {
+  messages: Message[];
+  pagination: {
+    total: number;
+    pages: number;
+    page: number;
+    limit: number;
+  };
+}
+
+export interface ApiResponse<T> {
+  success: boolean;
   data?: T;
   error?: string;
-  status: number;
-}; 
+} 

@@ -1,4 +1,6 @@
-# Authentication Module
+# [DEPRECATED] Authentication Module
+
+> ⚠️ **DEPRECATED**: This document has been consolidated into the new [`SECURITY.md`](./SECURITY.md). Please refer to that document for the most up-to-date information.
 
 ## Current Implementation
 

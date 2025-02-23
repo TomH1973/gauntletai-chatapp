@@ -8,11 +8,6 @@ scrape_configs:
       - targets: ['app:3000']
     metrics_path: '/api/metrics'
 
-  - job_name: 'websocket'
-    static_configs:
-      - targets: ['websocket:4000']
-    metrics_path: '/metrics'
-
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090'] 

@@ -1,72 +1,95 @@
 import { Server } from 'socket.io';
 import { createServer } from 'http';
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Message as PrismaMessage, User as PrismaUser, Thread as PrismaThread, Reaction as PrismaReaction, MessageStatus } from '@prisma/client';
 import { clerkClient } from '@clerk/clerk-sdk-node';
 import { metrics } from '@/lib/metrics';
 import { validateMessage } from '@/lib/validation/message';
-import { SocketErrorCode, handleSocketError } from '@/lib/socketErrors';
-import { MessageStatus } from '@/types/message';
-import type { ClientToServerEvents, ServerToClientEvents, SocketData } from '@/types/socket';
-import { FileStorage } from '@/lib/fileStorage';
+import { handleSocketError } from '@/lib/socketErrors';
+import type { ClientToServerEvents, ServerToClientEvents, SocketData, Message, Thread, MessageReaction, ThreadSettings, SocketServer } from '@/types/socket';
+import { fileStorage } from '@/lib/fileStorage';
 import { ReactionService } from '@/lib/reactions/reactionService';
 import { prisma } from '@/lib/prisma';
 import { handleReaction } from './reactionHandler';
+import { rateLimit } from '@/lib/rate-limit';
+import { SocketErrorCode } from '@/types/socket';
+import { handleMessage } from './messageHandler';
+import { createAdapter } from '@socket.io/redis-adapter';
+import Redis from 'ioredis';
+import { TypingHandler } from './typingHandler';
+import { MessageStatusHandler } from './messageStatusHandler';
+import { ReactionHandler } from './reactionHandler';
 
 // Initialize services
 const app = express();
 const httpServer = createServer(app);
 
+// Redis clients for pub/sub
+const pubClient = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+const subClient = pubClient.duplicate();
+
 // Create Socket.IO server with typed events
-const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
-  cors: {
-    origin: process.env.NEXT_PUBLIC_APP_URL,
-    methods: ['GET', 'POST'],
-    credentials: true,
+const io: SocketServer = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
+  adapter: createAdapter(pubClient, subClient),
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 2 * 60 * 1000,
+    skipMiddlewares: true,
   },
+  pingInterval: 10000,
+  pingTimeout: 5000,
 });
 
 // State management
+const presenceClient = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+const typingHandler = new TypingHandler(io, presenceClient);
+const messageStatusHandler = new MessageStatusHandler(io, presenceClient, prisma);
+const reactionHandler = new ReactionHandler(io, presenceClient, prisma);
 const onlineUsers = new Map<string, Set<string>>();
-const typingUsers = new Map<string, Map<string, { username: string; timestamp: number }>>();
-const lastSeenTimes = new Map<string, Date>();
-const messageRateLimit = new Map<string, number>();
+const lastSeenTimes = new Map<string, string>();
 
 // Constants
-const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_WINDOW = 60000;
 const MAX_MESSAGES_PER_WINDOW = 60;
 const MAX_MESSAGE_LENGTH = 5000;
-
-// Utility function to clean up rate limit entries
-const cleanupRateLimits = () => {
-  const now = Date.now();
-  messageRateLimit.forEach((timestamp, key) => {
-    if (now - timestamp > RATE_LIMIT_WINDOW) {
-      messageRateLimit.delete(key);
-    }
-  });
-};
-
-// Run cleanup every minute
-setInterval(cleanupRateLimits, 60000);
+const TYPING_TIMEOUT = 3000;
+const PRESENCE_EXPIRY = 30;
 
 // Authentication middleware
 io.use(async (socket, next) => {
   try {
-    const token = socket.handshake.auth.token;
-    if (!token) {
-      return next(new Error('Authentication required'));
+    const userId = socket.handshake.auth.userId;
+    if (!userId) {
+      next(new Error('Authentication required'));
+      return;
     }
 
-    const session = await clerkClient.sessions.getSession(token);
-    if (!session || !session.userId) {
-      return next(new Error('Invalid token'));
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        image: true,
+      }
+    });
+
+    if (!user) {
+      next(new Error('User not found'));
+      return;
     }
 
-    socket.data = {
-      userId: session.userId,
-      sessionId: session.id,
-    } as SocketData;
+    socket.data.userId = userId;
+    socket.data.threadIds = [];
+    socket.data.sessionId = socket.id;
+
+    // Update user status
+    await prisma.user.update({
+      where: { id: userId },
+      data: { 
+        isActive: true,
+        lastSeen: new Date(),
+        lastLoginAt: new Date()
+      }
+    });
 
     next();
   } catch (error) {
@@ -77,7 +100,12 @@ io.use(async (socket, next) => {
 
 // Connection handling
 io.on('connection', async (socket) => {
-  const { userId } = socket.data;
+  const userId = socket.data.userId;
+  if (!userId) {
+    socket.disconnect();
+    return;
+  }
+
   metrics.activeConnections.inc();
 
   try {
@@ -86,12 +114,10 @@ io.on('connection', async (socket) => {
       where: { id: userId },
       select: {
         id: true,
+        name: true,
         email: true,
-        firstName: true,
-        lastName: true,
-        username: true,
-        profileImage: true,
-      },
+        image: true
+      }
     });
 
     if (!user) {
@@ -106,7 +132,10 @@ io.on('connection', async (socket) => {
     // Update user's online status
     await prisma.user.update({
       where: { id: userId },
-      data: { isActive: true, lastLoginAt: new Date() },
+      data: { 
+        isActive: true,
+        lastSeen: new Date()
+      }
     });
 
     // Add user to online users
@@ -128,139 +157,58 @@ io.on('connection', async (socket) => {
     // Broadcast user online status
     socket.broadcast.emit('presence:online', {
       userId: user.id,
-      name: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.username,
+      name: user.name,
     });
 
     // Handle presence events
     socket.on('presence:ping', async () => {
-      lastSeenTimes.set(userId, new Date());
+      lastSeenTimes.set(userId, new Date().toISOString());
       socket.emit('presence:pong', {
         onlineUsers: Array.from(onlineUsers.keys()),
         lastSeenTimes: Object.fromEntries(lastSeenTimes),
       });
     });
 
+    // Handle message status events
+    socket.on('message:read', async (messageId: string) => {
+      try {
+        await messageStatusHandler.markAsRead(messageId, userId);
+      } catch (error) {
+        console.error('Error marking message as read:', error);
+      }
+    });
+
+    socket.on('thread:read', async (threadId: string) => {
+      try {
+        await messageStatusHandler.markThreadAsRead(threadId, userId);
+      } catch (error) {
+        console.error('Error marking thread as read:', error);
+      }
+    });
+
     // Handle message sending
     socket.on('message:send', async (data) => {
       try {
-        // Rate limiting
-        const userRate = messageRateLimit.get(userId) || 0;
-        if (userRate >= MAX_MESSAGES_PER_WINDOW) {
-          socket.emit('error', {
-            code: SocketErrorCode.RATE_LIMIT_EXCEEDED,
-            message: 'Too many messages. Please wait a minute.',
+        const message = await handleMessage(io, socket, data);
+        if (message) {
+          // Mark as delivered for all online users in thread
+          const threadParticipants = await prisma.threadParticipant.findMany({
+            where: { threadId: message.threadId },
+            select: { userId: true }
           });
-          return;
+
+          await Promise.all(
+            threadParticipants
+              .filter(p => p.userId !== userId && onlineUsers.has(p.userId))
+              .map(p => messageStatusHandler.markAsDelivered(message.id, p.userId))
+          );
         }
-
-        // Validate message
-        const validationResult = await validateMessage(data, userId);
-        if (!validationResult.isValid) {
-          socket.emit('error', {
-            code: SocketErrorCode.INVALID_INPUT,
-            message: validationResult.errors?.[0] || 'Invalid message',
-          });
-          return;
-        }
-
-        // Create message
-        const message = await prisma.message.create({
-          data: {
-            content: validationResult.sanitizedContent || data.content,
-            threadId: data.threadId,
-            userId,
-            status: MessageStatus.SENT,
-            parentId: data.parentId || null,
-          },
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                profileImage: true,
-              },
-            },
-            // Include parent message if this is a reply
-            parent: data.parentId ? {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    username: true,
-                    profileImage: true,
-                  },
-                },
-              },
-            } : false,
-          },
-        });
-
-        // If this is a reply, update the parent message to include this reply
-        if (data.parentId) {
-          const parentReplies = await prisma.message.findMany({
-            where: { parentId: data.parentId },
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  username: true,
-                  profileImage: true,
-                },
-              },
-            },
-            orderBy: { createdAt: 'asc' },
-          });
-
-          // Emit update to parent message with new replies
-          io.to(`thread:${data.threadId}`).emit('message:updated', {
-            ...message.parent,
-            replies: parentReplies,
-          });
-        }
-
-        // Emit new message to thread
-        io.to(`thread:${data.threadId}`).emit('message:new', {
-          ...message,
-          tempId: data.tempId,
-          user: message.user,
-          replies: [], // New messages start with no replies
-        });
-
-        // Update rate limiting
-        messageRateLimit.set(userId, userRate + 1);
-        setTimeout(() => {
-          const currentRate = messageRateLimit.get(userId) || 0;
-          if (currentRate > 0) {
-            messageRateLimit.set(userId, currentRate - 1);
-          }
-        }, RATE_LIMIT_WINDOW);
-
-        // Handle delivery status
-        const participants = await prisma.threadParticipant.findMany({
-          where: { threadId: data.threadId },
-          select: { userId: true },
-        });
-
-        const onlineParticipants = participants
-          .map(p => p.userId)
-          .filter(id => id !== userId && onlineUsers.has(id));
-
-        if (onlineParticipants.length > 0) {
-          await prisma.message.update({
-            where: { id: message.id },
-            data: { status: MessageStatus.DELIVERED },
-          });
-
-          io.to(`thread:${data.threadId}`).emit('message:status', {
-            messageId: message.id,
-            status: MessageStatus.DELIVERED,
-          });
-        }
-
-        metrics.messagesSent.inc({ status: 'success' });
       } catch (error) {
-        metrics.messagesSent.inc({ status: 'error' });
-        handleSocketError(socket, error as Error);
+        console.error('Error handling message:', error);
+        socket.emit('error', {
+          code: SocketErrorCode.MESSAGE_ERROR,
+          message: 'Failed to process message',
+        });
       }
     });
 
@@ -354,18 +302,12 @@ io.on('connection', async (socket) => {
     // Handle message deletion
     socket.on('message:delete', async (data) => {
       try {
-        // Get message and verify ownership
         const message = await prisma.message.findUnique({
           where: { id: data.messageId },
-          include: {
-            thread: true,
-            user: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
+          select: {
+            threadId: true,
+            userId: true,
+          }
         });
 
         if (!message) {
@@ -378,262 +320,83 @@ io.on('connection', async (socket) => {
 
         if (message.userId !== userId) {
           socket.emit('error', {
-            code: SocketErrorCode.THREAD_ACCESS_DENIED,
+            code: SocketErrorCode.PERMISSION_DENIED,
             message: 'Not authorized to delete this message',
           });
           return;
         }
 
-        // Soft delete the message
-        const deletedMessage = await prisma.message.update({
-          where: { id: message.id },
-          data: {
-            deletedAt: new Date(),
-            content: '[Message deleted]', // Optional: replace content for privacy
-          },
+        // Cleanup reactions
+        await reactionHandler.cleanup(data.messageId);
+
+        // Delete message
+        await prisma.message.delete({
+          where: { id: data.messageId },
         });
 
         // Notify thread participants
         io.to(`thread:${message.threadId}`).emit('message:deleted', {
-          messageId: message.id,
+          messageId: data.messageId,
           threadId: message.threadId,
-          deletedAt: deletedMessage.deletedAt,
+          deletedAt: new Date(),
           deletedBy: {
             id: userId,
-            name: message.user.name || 'Anonymous',
+            name: socket.data.username || 'Unknown',
           },
         });
-
-        metrics.messagesSent.inc({ status: 'deleted' });
       } catch (error) {
         console.error('Error deleting message:', error);
-        handleSocketError(socket, error as Error);
+        socket.emit('error', {
+          code: SocketErrorCode.OPERATION_FAILED,
+          message: 'Failed to delete message',
+        });
       }
     });
 
     // Handle message reactions
     socket.on('message:addReaction', async (data) => {
       try {
-        // Get message and verify it exists
-        const message = await prisma.message.findUnique({
-          where: { id: data.messageId },
-          include: {
-            thread: true,
-            user: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        });
-
-        if (!message) {
-          socket.emit('error', {
-            code: SocketErrorCode.MESSAGE_NOT_FOUND,
-            message: 'Message not found',
-          });
-          return;
-        }
-
-        // Verify user is a thread participant
-        const participant = await prisma.threadParticipant.findUnique({
-          where: {
-            userId_threadId: {
-              userId,
-              threadId: message.threadId,
-            },
-          },
-        });
-
-        if (!participant) {
-          socket.emit('error', {
-            code: SocketErrorCode.THREAD_ACCESS_DENIED,
-            message: 'Not a participant of this thread',
-          });
-          return;
-        }
-
-        // Add reaction
-        const reaction = await prisma.messageReaction.create({
-          data: {
-            messageId: data.messageId,
-            userId,
-            emoji: data.emoji,
-          },
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        });
-
-        // Notify thread participants
-        io.to(`thread:${message.threadId}`).emit('message:reactionAdded', {
-          messageId: message.id,
-          emoji: reaction.emoji,
-          userId: reaction.userId,
-          user: {
-            id: reaction.user.id,
-            name: reaction.user.name || 'Anonymous',
-          },
-          createdAt: reaction.createdAt,
-        });
-
-        metrics.messageReactions.inc({ type: 'add' });
+        await reactionHandler.addReaction(data.messageId, userId, data.reaction);
       } catch (error) {
-        if (error.code === 'P2002') { // Unique constraint violation
-          // Ignore duplicate reactions
-          return;
-        }
         console.error('Error adding reaction:', error);
-        handleSocketError(socket, error as Error);
+        socket.emit('error', {
+          code: SocketErrorCode.OPERATION_FAILED,
+          message: 'Failed to add reaction',
+        });
       }
     });
 
     socket.on('message:removeReaction', async (data) => {
       try {
-        // Get reaction and verify ownership
-        const reaction = await prisma.messageReaction.findUnique({
-          where: {
-            messageId_userId_emoji: {
-              messageId: data.messageId,
-              userId,
-              emoji: data.emoji,
-            },
-          },
-          include: {
-            message: {
-              select: {
-                threadId: true,
-              },
-            },
-          },
-        });
-
-        if (!reaction) {
-          socket.emit('error', {
-            code: SocketErrorCode.MESSAGE_NOT_FOUND,
-            message: 'Reaction not found',
-          });
-          return;
-        }
-
-        // Delete reaction
-        await prisma.messageReaction.delete({
-          where: {
-            messageId_userId_emoji: {
-              messageId: data.messageId,
-              userId,
-              emoji: data.emoji,
-            },
-          },
-        });
-
-        // Notify thread participants
-        io.to(`thread:${reaction.message.threadId}`).emit('message:reactionRemoved', {
-          messageId: data.messageId,
-          emoji: data.emoji,
-          userId,
-        });
-
-        metrics.messageReactions.inc({ type: 'remove' });
+        await reactionHandler.removeReaction(data.messageId, userId, data.reaction);
       } catch (error) {
         console.error('Error removing reaction:', error);
-        handleSocketError(socket, error as Error);
+        socket.emit('error', {
+          code: SocketErrorCode.OPERATION_FAILED,
+          message: 'Failed to remove reaction',
+        });
       }
     });
 
-    // Handle message read status
-    socket.on('message:read', async (messageId) => {
+    // Handle typing events
+    socket.on('typing:start', async (threadId: string) => {
       try {
-        const message = await prisma.message.findUnique({
-          where: { id: messageId },
-          include: { thread: true },
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { name: true }
         });
 
-        if (!message) return;
-
-        await prisma.message.update({
-          where: { id: messageId },
-          data: { status: MessageStatus.READ },
-        });
-
-        io.to(`thread:${message.threadId}`).emit('message:status', {
-          messageId,
-          status: MessageStatus.READ,
-        });
-      } catch (error) {
-        console.error('Error marking message as read:', error);
-      }
-    });
-
-    // Handle typing indicators
-    socket.on('typing:start', async (threadId) => {
-      try {
-        if (!typingUsers.has(threadId)) {
-          typingUsers.set(threadId, new Map());
+        if (user) {
+          await typingHandler.startTyping(threadId, userId, user.name);
         }
-
-        typingUsers.get(threadId)?.set(userId, {
-          username: user.username || 'Anonymous',
-          timestamp: Date.now(),
-        });
-
-        const currentTypingUsers = Array.from(typingUsers.get(threadId)?.entries() || [])
-          .map(([id, data]) => ({
-            id,
-            username: data.username,
-          }));
-
-        io.to(`thread:${threadId}`).emit('typing:update', {
-          threadId,
-          users: currentTypingUsers,
-        });
-
-        // Clean up typing status after 3 seconds
-        setTimeout(() => {
-          const threadTyping = typingUsers.get(threadId);
-          if (threadTyping?.has(userId)) {
-            const timestamp = threadTyping.get(userId)?.timestamp;
-            if (timestamp && Date.now() - timestamp >= 3000) {
-              threadTyping.delete(userId);
-              
-              const updatedTypingUsers = Array.from(threadTyping.entries())
-                .map(([id, data]) => ({
-                  id,
-                  username: data.username,
-                }));
-
-              io.to(`thread:${threadId}`).emit('typing:update', {
-                threadId,
-                users: updatedTypingUsers,
-              });
-            }
-          }
-        }, 3000);
       } catch (error) {
         console.error('Error handling typing start:', error);
       }
     });
 
-    socket.on('typing:stop', (threadId) => {
+    socket.on('typing:stop', async (threadId: string) => {
       try {
-        typingUsers.get(threadId)?.delete(userId);
-
-        const currentTypingUsers = Array.from(typingUsers.get(threadId)?.entries() || [])
-          .map(([id, data]) => ({
-            id,
-            username: data.username,
-          }));
-
-        io.to(`thread:${threadId}`).emit('typing:update', {
-          threadId,
-          users: currentTypingUsers,
-        });
+        await typingHandler.stopTyping(threadId, userId);
       } catch (error) {
         console.error('Error handling typing stop:', error);
       }
@@ -664,7 +427,7 @@ io.on('connection', async (socket) => {
     });
 
     // Handle disconnection
-    socket.on('disconnect', async () => {
+    socket.on('disconnect', async (reason) => {
       metrics.activeConnections.dec();
 
       // Update user's online status
@@ -677,30 +440,27 @@ io.on('connection', async (socket) => {
       onlineUsers.get(userId)?.delete(socket.id);
       if (onlineUsers.get(userId)?.size === 0) {
         onlineUsers.delete(userId);
-        lastSeenTimes.set(userId, new Date());
+        lastSeenTimes.set(userId, new Date().toISOString());
         socket.broadcast.emit('presence:offline', {
           userId,
           lastSeen: lastSeenTimes.get(userId),
         });
       }
 
-      // Remove user from all typing lists
-      for (const [threadId, threadTyping] of typingUsers.entries()) {
-        if (threadTyping.has(userId)) {
-          threadTyping.delete(userId);
-          
-          const updatedTypingUsers = Array.from(threadTyping.entries())
-            .map(([id, data]) => ({
-              id,
-              username: data.username,
-            }));
+      // Stop typing in all threads
+      const userThreads = await prisma.threadParticipant.findMany({
+        where: { userId },
+        select: { threadId: true }
+      });
 
-          io.to(`thread:${threadId}`).emit('typing:update', {
-            threadId,
-            users: updatedTypingUsers,
-          });
-        }
-      }
+      await Promise.all([
+        ...userThreads.map(({ threadId }) => typingHandler.stopTyping(threadId, userId)),
+        // Update last seen time
+        prisma.user.update({
+          where: { id: userId },
+          data: { lastSeen: new Date() }
+        })
+      ]);
     });
 
     // Handle file attachments
@@ -749,7 +509,7 @@ io.on('connection', async (socket) => {
         // Process each file
         for (const file of data.files) {
           // Validate file
-          const validation = FileStorage.validateFile(file.name, file.mimeType, file.size);
+          const validation = fileStorage.validateFile(file.name, file.mimeType, file.size);
           if (!validation.isValid) {
             socket.emit('error', {
               code: SocketErrorCode.INVALID_FILE,
@@ -849,7 +609,7 @@ io.on('connection', async (socket) => {
         });
 
         // Schedule physical file deletion
-        await FileStorage.deleteAttachment(data.attachmentId, userId);
+        await fileStorage.deleteAttachment(data.attachmentId, userId);
 
         // Notify thread participants
         io.to(`thread:${attachment.message.threadId}`).emit('message:attachmentRemoved', {
@@ -1289,11 +1049,7 @@ io.on('connection', async (socket) => {
     });
 
   } catch (error) {
-    console.error('Connection error:', error);
-    socket.emit('error', {
-      code: SocketErrorCode.CONNECTION_ERROR,
-      message: 'Failed to connect to the server',
-    });
+    console.error('Error in connection handler:', error);
     socket.disconnect();
   }
 });

@@ -1,60 +1,48 @@
 #!/bin/bash
 set -e
 
-# Configuration
-DEPLOY_DIR="/opt/chatapp/staging"
-BACKUP_DIR="$DEPLOY_DIR/backup"
-DOCKER_COMPOSE="docker-compose -f docker-compose.staging.yml"
-MAX_RETRIES=5
-HEALTH_CHECK_URL="http://localhost:3000/api/health"
+echo "🚀 Deploying to staging..."
 
-# Create necessary directories
-mkdir -p $DEPLOY_DIR $BACKUP_DIR
+# Load environment variables
+source .env.staging
 
-# Backup current state
-echo "Backing up current state..."
-if [ -f "$DEPLOY_DIR/docker-compose.staging.yml" ]; then
-  cp $DEPLOY_DIR/docker-compose.staging.yml $BACKUP_DIR/
-  $DOCKER_COMPOSE down || true
-fi
+# Build the application
+echo "📦 Building application..."
+npm run build
 
-# Pull latest images
-echo "Pulling latest images..."
-$DOCKER_COMPOSE pull
+# Run database migrations
+echo "🔄 Running database migrations..."
+npx prisma migrate deploy
 
-# Start services
-echo "Starting services..."
-$DOCKER_COMPOSE up -d
+# Generate Prisma client
+echo "⚡ Generating Prisma client..."
+npx prisma generate
 
-# Health check function
-check_health() {
-  for i in $(seq 1 $MAX_RETRIES); do
-    echo "Health check attempt $i of $MAX_RETRIES..."
-    if curl -s $HEALTH_CHECK_URL > /dev/null; then
-      echo "Health check passed!"
-      return 0
-    fi
-    sleep 10
-  done
-  echo "Health check failed after $MAX_RETRIES attempts"
-  return 1
-}
+# Deploy monitoring stack first
+echo "📊 Deploying monitoring stack..."
+docker compose -f docker-compose.monitoring.yml up -d prometheus grafana
 
-# Perform health check
-if ! check_health; then
-  echo "Deployment failed health check, rolling back..."
-  $DOCKER_COMPOSE down
-  if [ -f "$BACKUP_DIR/docker-compose.staging.yml" ]; then
-    cp $BACKUP_DIR/docker-compose.staging.yml $DEPLOY_DIR/
-    $DOCKER_COMPOSE up -d
-    if check_health; then
-      echo "Rollback successful"
-      exit 1
-    fi
-  fi
-  echo "Rollback failed, manual intervention required"
-  exit 1
-fi
+# Deploy the application
+echo "🌟 Deploying application..."
+docker compose -f docker-compose.staging.yml up -d
 
-echo "Deployment successful!"
-exit 0 
+# Run smoke tests
+echo "🔍 Running smoke tests..."
+npm run test:smoke
+
+# Seed staging data
+echo "🌱 Seeding staging data..."
+npm run prisma:seed
+
+echo "✨ Deployment complete!"
+
+# Print URLs
+echo "
+🔗 Application: https://staging.chatapp.example.com
+📊 Grafana: https://grafana.staging.chatapp.example.com
+🔍 Prometheus: https://prometheus.staging.chatapp.example.com
+"
+
+# Health check
+echo "🏥 Running health check..."
+curl -s https://staging.chatapp.example.com/api/health || echo "Health check failed!" 

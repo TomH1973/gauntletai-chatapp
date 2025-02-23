@@ -1,0 +1,55 @@
+config:
+  target: "ws://localhost:3002"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      rampTo: 50
+      name: "Ramp up load"
+  ws:
+    # Disable SSL verification for local testing
+    rejectUnauthorized: false
+
+scenarios:
+  - name: "WebSocket chat flow"
+    engine: "ws"
+    flow:
+      # Connect and authenticate
+      - connect: "{{ target }}"
+      - think: 1
+      - emit:
+          channel: "connection"
+          data:
+            userId: "test-user-{{ $randomNumber(1,1000) }}"
+      
+      # Join a thread
+      - think: 2
+      - emit:
+          channel: "thread:join"
+          data: "test-thread-1"
+      
+      # Send messages
+      - loop:
+          - emit:
+              channel: "message:send"
+              data:
+                threadId: "test-thread-1"
+                content: "Test message {{ $randomString() }}"
+          - think: 1
+        count: 5
+
+      # Simulate typing
+      - emit:
+          channel: "typing:start"
+          data: "test-thread-1"
+      - think: 2
+      - emit:
+          channel: "typing:stop"
+          data: "test-thread-1"
+
+      # Leave thread and disconnect
+      - think: 1
+      - emit:
+          channel: "thread:leave"
+          data: "test-thread-1"
+      - think: 1
+      - disconnect: true 

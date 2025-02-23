@@ -1,4 +1,6 @@
-# Project Context
+# [DEPRECATED] Project Context
+
+> ⚠️ **DEPRECATED**: This document has been consolidated into the new [`ARCHITECTURE.md`](./ARCHITECTURE.md). Please refer to that document for the most up-to-date information.
 
 ## Current Status
 - Project Phase: Phase 8 (Testing & Launch)

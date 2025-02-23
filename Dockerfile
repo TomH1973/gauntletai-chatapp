@@ -1,65 +1,56 @@
 # Base stage
 FROM node:18-alpine AS base
 
-# Create app directory
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Create nextjs user and group
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nextjs -u 1001
+# Install dependencies based on the preferred package manager
+COPY package.json package-lock.json* ./
+RUN npm ci
+RUN npm install -g cross-env
 
-# Install OpenSSL
-RUN apk add --no-cache openssl
-
-# Development stage
-FROM base AS development
-
-# Copy package files
-COPY package*.json ./
-COPY prisma ./prisma/
-
-# Install dependencies and global tools
-RUN npm install && \
-    npm install -g ts-node typescript
-
-# Copy source files
+# Rebuild the source code only when needed
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Create directories and set permissions
-RUN mkdir -p node_modules/.prisma \
-    && mkdir -p .next \
-    && chown -R nextjs:nodejs /app \
-    && chmod -R 755 /app \
-    && chmod -R 777 .next
+# Next.js collects completely anonymous telemetry data about general usage.
+# Learn more here: https://nextjs.org/telemetry
+# Uncomment the following line in case you want to disable telemetry during the build.
+ENV NEXT_TELEMETRY_DISABLED 1
 
-# Switch to nextjs user
+RUN npm run build
+
+# Production image, copy all the files and run next
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV production
+ENV NEXT_TELEMETRY_DISABLED 1
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+
+# Set the correct permission for prerender cache
+RUN mkdir .next
+RUN chown nextjs:nodejs .next
+
+# Automatically leverage output traces to reduce image size
+# https://nextjs.org/docs/advanced-features/output-file-tracing
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
 USER nextjs
 
-# Start development server
-CMD npx prisma generate && npm run dev
+EXPOSE 3000
+EXPOSE 3002
 
-# Production stage
-FROM base AS production
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
 
-# Copy package files
-COPY package*.json ./
-COPY prisma ./prisma/
-
-# Install production dependencies
-RUN npm install --only=production
-
-# Copy source files
-COPY . .
-
-# Create directories and set permissions
-RUN mkdir -p node_modules/.prisma \
-    && mkdir -p .next \
-    && chown -R nextjs:nodejs /app \
-    && chmod -R 755 /app \
-    && chmod -R 777 .next
-
-# Switch to nextjs user
-USER nextjs
-
-# Start production server
-CMD npx prisma generate && npm start 
+CMD ["node", "server.js"] 

@@ -1,3 +1,7 @@
+# [DEPRECATED] Data Model v2
+
+> ⚠️ **DEPRECATED**: This document has been consolidated into the new [`DATA_MODEL.md`](./DATA_MODEL.md). Please refer to that document for the most up-to-date information.
+
 # Enhanced Chat Application Data Model
 
 ## Core Entities

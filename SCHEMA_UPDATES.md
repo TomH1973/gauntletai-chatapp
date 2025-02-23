@@ -1,3 +1,7 @@
+# [DEPRECATED] Schema Updates
+
+> ⚠️ **DEPRECATED**: This document has been consolidated into the new [`DATA_MODEL.md`](docs/DATA_MODEL.md). Please refer to that document for the most up-to-date information.
+
 # Required Schema Updates for Security Implementation
 
 ## User Model Updates

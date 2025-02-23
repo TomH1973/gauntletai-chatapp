@@ -1,6 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { MessageEncryption } from '../security/encryption.js';
-import { metrics } from '../metrics.js';
+import { metrics } from '../metrics';
 import Redis from 'ioredis';
 
 interface ThreadManagerConfig {
@@ -27,16 +26,15 @@ export class ThreadManager {
     await this.redis.setex(`thread:${threadId}`, ThreadManager.CACHE_TTL, JSON.stringify(data));
   }
 
-  async createThread(title: string, creatorId: string, participantIds: string[]) {
+  async createThread(name: string, creatorId: string, participantIds: string[]) {
     const startTime = performance.now();
     
     try {
       const thread = await this.prisma.$transaction(async (tx) => {
-        // Create thread with encryption key
+        // Create thread
         const thread = await tx.thread.create({
           data: {
-            title,
-            encryptionKey: MessageEncryption.generateThreadKey(),
+            name,
             participants: {
               create: [
                 { userId: creatorId, role: 'ADMIN' },
@@ -51,7 +49,8 @@ export class ThreadManager {
                   select: {
                     id: true,
                     name: true,
-                    email: true
+                    email: true,
+                    image: true
                   }
                 }
               }
@@ -92,7 +91,8 @@ export class ThreadManager {
                   select: {
                     id: true,
                     name: true,
-                    email: true
+                    email: true,
+                    image: true
                   }
                 }
               }
@@ -144,7 +144,8 @@ export class ThreadManager {
                 select: {
                   id: true,
                   name: true,
-                  email: true
+                  email: true,
+                  image: true
                 }
               }
             }
@@ -159,9 +160,12 @@ export class ThreadManager {
                 select: {
                   id: true,
                   name: true,
-                  email: true
+                  email: true,
+                  image: true
                 }
-              }
+              },
+              reactions: true,
+              attachments: true
             }
           }
         }

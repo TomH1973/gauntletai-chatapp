@@ -1,0 +1,77 @@
+groups:
+  - name: business_metrics
+    rules:
+      - alert: MessageThroughputDrop
+        expr: |
+          rate(messages_total[5m]) 
+          < 
+          avg_over_time(rate(messages_total[24h])[5m]) * 0.7
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Message throughput drop"
+          description: "Message throughput has dropped below 70% of 24h average"
+
+      - alert: UserEngagementDrop
+        expr: |
+          sum(websocket_active_connections) 
+          < 
+          avg_over_time(sum(websocket_active_connections)[24h]) * 0.7
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "User engagement drop"
+          description: "Active connections have dropped below 70% of 24h average"
+
+      - alert: HighMessageFailureRate
+        expr: |
+          sum(rate(message_delivery_failures_total[5m]))
+          /
+          sum(rate(message_delivery_attempts_total[5m]))
+          > 0.001
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High message failure rate"
+          description: "Message delivery failure rate > 0.1% (current value: {{ $value * 100 }}%)"
+
+      - alert: SearchUsageDrop
+        expr: |
+          rate(search_requests_total[5m])
+          <
+          avg_over_time(rate(search_requests_total[24h])[5m]) * 0.6
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Search usage drop"
+          description: "Search usage has dropped below 60% of 24h average"
+
+      - alert: ThreadActivityDrop
+        expr: |
+          sum(rate(thread_messages_total[5m]))
+          <
+          avg_over_time(sum(rate(thread_messages_total[24h]))[5m]) * 0.6
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Thread activity drop"
+          description: "Thread activity has dropped below 60% of 24h average"
+
+      - alert: UserRetentionDrop
+        expr: |
+          sum(returning_users_total)
+          /
+          sum(websocket_unique_users_total) * 100
+          <
+          avg_over_time((sum(returning_users_total) / sum(websocket_unique_users_total) * 100)[24h]) * 0.8
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "User retention drop"
+          description: "User retention has dropped below 80% of 24h average" 

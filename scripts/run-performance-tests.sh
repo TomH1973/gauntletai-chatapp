@@ -17,24 +17,41 @@ if ! command -v k6 &> /dev/null; then
     fi
 fi
 
-echo "Running performance tests..."
+# Create results directory if it doesn't exist
+mkdir -p reports/performance
 
-# Run basic message load test
-echo "Running message load test..."
-k6 run --out json=message-load.json tests/performance/messaging.k6.js --scenario message_load
+echo "Starting performance test suite..."
 
-# Run real-time messaging stress test
-echo "Running real-time messaging stress test..."
-k6 run --out json=realtime-stress.json tests/performance/messaging.k6.js --scenario realtime_stress
+# Run concurrent connections test first (most critical)
+echo "Running concurrent connections test..."
+k6 run \
+  --out json=reports/performance/concurrent-connections.json \
+  --out csv=reports/performance/concurrent-connections.csv \
+  tests/performance/concurrent-connections.k6.js
 
-# Run connection handling test
-echo "Running connection stress test..."
-k6 run --out json=connection-stress.json tests/performance/messaging.k6.js --scenario connection_stress
+# Only continue with other tests if concurrent test passes
+if [ $? -eq 0 ]; then
+    echo "Concurrent connections test passed, continuing with other tests..."
+    
+    # Run basic message load test
+    echo "Running message load test..."
+    k6 run --out json=reports/performance/message-load.json tests/performance/messaging.k6.js --scenario message_load
 
-echo "Performance tests completed. Results saved to JSON files."
+    # Run real-time messaging stress test
+    echo "Running real-time messaging stress test..."
+    k6 run --out json=reports/performance/realtime-stress.json tests/performance/messaging.k6.js --scenario realtime_stress
 
-# Generate report
-echo "Generating performance report..."
+    # Run connection handling test
+    echo "Running connection stress test..."
+    k6 run --out json=reports/performance/connection-stress.json tests/performance/messaging.k6.js --scenario connection_stress
+else
+    echo "❌ Concurrent connections test failed! Stopping test suite."
+    exit 1
+fi
+
+# Generate consolidated report
+echo "Generating test report..."
 node scripts/generate-performance-report.js
 
-echo "Done! Check the performance-report.html file for detailed results." 
+echo "✅ Performance test suite complete!"
+echo "Reports available in reports/performance/" 

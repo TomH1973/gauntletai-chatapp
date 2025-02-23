@@ -1,81 +1,188 @@
-import { Socket } from 'socket.io';
-import { prisma } from '@/lib/prisma';
-import { ReactionService } from '@/lib/reactions/reactionService';
-import { SocketErrorCode } from '@/types/socket';
-import type { ClientToServerEvents, ServerToClientEvents, SocketData } from '@/types/socket';
+import Redis from 'ioredis';
+import { SocketServer } from '@/types/socket';
+import { PrismaClient } from '@prisma/client';
 
-export async function handleReaction(
-  socket: Socket<ClientToServerEvents, ServerToClientEvents, {}, SocketData>,
-  messageId: string,
-  emoji: string
-) {
-  try {
-    const message = await prisma.message.findUnique({
+const REACTION_KEY_PREFIX = 'reaction:';
+const REACTION_USERS_KEY_PREFIX = 'reaction-users:';
+
+class ReactionHandler {
+  private redis: Redis;
+  private io: SocketServer;
+  private prisma: PrismaClient;
+
+  constructor(io: SocketServer, redis: Redis, prisma: PrismaClient) {
+    this.redis = redis;
+    this.io = io;
+    this.prisma = prisma;
+  }
+
+  private getReactionKey(messageId: string): string {
+    return `${REACTION_KEY_PREFIX}${messageId}`;
+  }
+
+  private getReactionUsersKey(messageId: string, emoji: string): string {
+    return `${REACTION_USERS_KEY_PREFIX}${messageId}:${emoji}`;
+  }
+
+  async addReaction(messageId: string, userId: string, emoji: string): Promise<void> {
+    const key = this.getReactionKey(messageId);
+    const usersKey = this.getReactionUsersKey(messageId, emoji);
+
+    // Get message details
+    const message = await this.prisma.message.findUnique({
       where: { id: messageId },
-      include: { reactions: true }
+      select: {
+        threadId: true,
+        userId: true,
+      }
     });
 
     if (!message) {
-      socket.emit('error', { code: SocketErrorCode.MESSAGE_NOT_FOUND, message: 'Message not found' });
-      return;
+      throw new Error('Message not found');
     }
 
-    // Check if reaction already exists
-    const existingReaction = await prisma.reaction.findUnique({
+    // Get user details
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+      }
+    });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Add reaction to Redis
+    await this.redis
+      .multi()
+      .hincrby(key, emoji, 1)
+      .sadd(usersKey, userId)
+      .exec();
+
+    // Create or update reaction in database
+    const reaction = await this.prisma.reaction.upsert({
       where: {
         messageId_emoji: {
           messageId,
-          emoji
-        }
-      }
+          emoji,
+        },
+      },
+      create: {
+        messageId,
+        emoji,
+        users: [userId],
+        count: 1,
+      },
+      update: {
+        users: {
+          push: userId,
+        },
+        count: {
+          increment: 1,
+        },
+      },
     });
 
-    if (existingReaction) {
-      // User has already reacted - remove their reaction
-      if (existingReaction.users.includes(socket.data.userId)) {
-        await ReactionService.removeReaction(messageId, socket.data.userId, emoji);
-      } else {
-        // Add user's reaction
-        const updatedUsers = [...existingReaction.users, socket.data.userId];
-        await prisma.reaction.update({
-          where: { id: existingReaction.id },
-          data: {
-            users: updatedUsers,
-            count: updatedUsers.length
-          }
-        });
-      }
-    } else {
-      // Create new reaction
-      await ReactionService.addReaction(messageId, socket.data.userId, emoji);
-    }
-
-    // Get updated message with reactions
-    const updatedMessage = await prisma.message.findUnique({
-      where: { id: messageId },
-      include: {
-        reactions: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            image: true
-          }
-        }
-      }
-    });
-
-    // Broadcast updated message to thread
-    socket.to(message.threadId).emit('message:reactionUpdated', {
+    // Emit reaction added event
+    this.io.to(`thread:${message.threadId}`).emit('message:reactionAdded', {
       messageId,
-      reactions: updatedMessage?.reactions || []
-    });
-
-  } catch (error) {
-    console.error('Error handling reaction:', error);
-    socket.emit('error', { 
-      code: SocketErrorCode.REACTION_FAILED,
-      message: 'Failed to handle reaction'
+      emoji,
+      userId,
+      user: {
+        id: user.id,
+        name: user.name,
+      },
+      createdAt: new Date(),
     });
   }
-} 
+
+  async removeReaction(messageId: string, userId: string, emoji: string): Promise<void> {
+    const key = this.getReactionKey(messageId);
+    const usersKey = this.getReactionUsersKey(messageId, emoji);
+
+    // Get message details
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: {
+        threadId: true,
+      }
+    });
+
+    if (!message) {
+      throw new Error('Message not found');
+    }
+
+    // Remove reaction from Redis
+    const [[, count], [, removed]] = await this.redis
+      .multi()
+      .hincrby(key, emoji, -1)
+      .srem(usersKey, userId)
+      .exec() as [[null, number], [null, number]];
+
+    if (count <= 0) {
+      // Remove reaction key if count is 0
+      await this.redis
+        .multi()
+        .hdel(key, emoji)
+        .del(usersKey)
+        .exec();
+    }
+
+    // Update reaction in database
+    await this.prisma.reaction.update({
+      where: {
+        messageId_emoji: {
+          messageId,
+          emoji,
+        },
+      },
+      data: {
+        users: {
+          set: await this.redis.smembers(usersKey),
+        },
+        count: count > 0 ? count : 0,
+      },
+    });
+
+    // Emit reaction removed event
+    this.io.to(`thread:${message.threadId}`).emit('message:reactionRemoved', {
+      messageId,
+      emoji,
+      userId,
+    });
+  }
+
+  async getReactions(messageId: string): Promise<Array<{
+    emoji: string;
+    count: number;
+    users: string[];
+  }>> {
+    const key = this.getReactionKey(messageId);
+    const reactions = await this.redis.hgetall(key);
+
+    return Promise.all(
+      Object.entries(reactions).map(async ([emoji, count]) => ({
+        emoji,
+        count: parseInt(count, 10),
+        users: await this.redis.smembers(this.getReactionUsersKey(messageId, emoji)),
+      }))
+    );
+  }
+
+  async cleanup(messageId: string): Promise<void> {
+    const key = this.getReactionKey(messageId);
+    const reactions = await this.redis.hgetall(key);
+
+    // Remove all reaction keys
+    await Promise.all([
+      this.redis.del(key),
+      ...Object.keys(reactions).map(emoji =>
+        this.redis.del(this.getReactionUsersKey(messageId, emoji))
+      ),
+    ]);
+  }
+}
+
+export { ReactionHandler }; 

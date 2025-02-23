@@ -1,7 +1,12 @@
 import type { Server as HttpServer } from 'http';
 import { Server } from 'socket.io';
 import { PrismaClient } from '@prisma/client';
-import type { ClientToServerEvents, ServerToClientEvents } from '../../types/chat';
+import type { 
+  ClientToServerEvents, 
+  ServerToClientEvents, 
+  SocketData,
+  SocketServer 
+} from '../../types/socket';
 import { handleConnection } from './connection';
 import { createPresenceManager } from './presence';
 import { createMessageHandler } from './messages';
@@ -16,8 +21,8 @@ interface SocketServerDependencies {
 export function initializeSocketServer(
   httpServer: HttpServer,
   deps: SocketServerDependencies
-) {
-  const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer);
+): SocketServer {
+  const io = new Server<ClientToServerEvents, ServerToClientEvents, {}, SocketData>(httpServer);
   const presenceManager = createPresenceManager(io);
   const messageHandler = createMessageHandler(io, { ...deps, io });
   const threadHandler = createThreadHandler(io, { ...deps, io });

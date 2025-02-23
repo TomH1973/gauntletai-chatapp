@@ -1,7 +1,6 @@
 import { z } from 'zod';
-import { MessageStatus } from '@/types/chat';
-import { ParticipantRole } from '@prisma/client';
-import { profanityFilter } from '@/lib/utils';
+import { MessageStatus } from '../../types/chat';
+import { profanityFilter } from '../utils';
 import DOMPurify from 'isomorphic-dompurify';
 import { rateLimiter } from '../security/rateLimiter.js';
 import type { MessageInput } from '../../types/message.js';

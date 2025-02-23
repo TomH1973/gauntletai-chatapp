@@ -1,45 +1,48 @@
 import { PrismaClient } from '@prisma/client';
-import { metrics } from '@/app/api/metrics/route';
+import { metrics } from './metrics';
 
 const prismaClientSingleton = () => {
-  return new PrismaClient().$extends({
-    query: {
-      async $allOperations({ operation, model, args, query }) {
-        const start = performance.now();
-        
-        try {
-          const result = await query(args);
-          const duration = performance.now() - start;
-          
-          // Record query duration
-          metrics.databaseQueryDuration.observe(
-            { operation, model },
-            duration / 1000
-          );
-          
-          return result;
-        } catch (error) {
-          const duration = performance.now() - start;
-          
-          // Record failed query duration
-          metrics.databaseQueryDuration.observe(
-            { operation: `${operation}_error`, model },
-            duration / 1000
-          );
-          
-          throw error;
-        }
+  const client = new PrismaClient({
+    log: [
+      {
+        emit: 'event',
+        level: 'query',
       },
-    },
+      {
+        emit: 'event',
+        level: 'error',
+      },
+      {
+        emit: 'event',
+        level: 'info',
+      },
+      {
+        emit: 'event',
+        level: 'warn',
+      },
+    ],
   });
+
+  client.$on('query', (e) => {
+    metrics.dbQueries.inc();
+    metrics.dbQueryTime.set(e.duration / 1000);
+  });
+
+  client.$on('error', () => {
+    metrics.errors.inc({ type: 'database' });
+  });
+
+  return client;
 };
 
-declare global {
-  var prisma: undefined | ReturnType<typeof prismaClientSingleton>;
-}
+type PrismaClientSingleton = ReturnType<typeof prismaClientSingleton>;
 
-export const prisma = globalThis.prisma ?? prismaClientSingleton();
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClientSingleton | undefined;
+};
+
+export const prisma = globalForPrisma.prisma ?? prismaClientSingleton();
 
 if (process.env.NODE_ENV !== 'production') {
-  globalThis.prisma = prisma;
+  globalForPrisma.prisma = prisma;
 } 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSocket } from '@/hooks/useSocket';
 import { useUser } from '@clerk/nextjs';
 import { useToast } from '@/components/ui/use-toast';
@@ -14,9 +14,11 @@ import { useAuth } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
 import { ErrorCode, ERROR_MESSAGES } from '@/lib/errors';
 import { cn } from '@/lib/utils';
-import { Menu } from '@/components/icons/menu';
+import { Menu, Search } from 'lucide-react';
 import { ThreadList } from './ThreadList';
 import { useChat } from '@/hooks/useChat';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { MessageSearch } from './MessageSearch';
 
 interface ChatInterfaceProps {
   threadId?: string;
@@ -53,6 +55,9 @@ export function ChatInterface({ threadId, currentUser, initialMessages = [], use
     selectThread,
     createThread
   } = useChat();
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (socket) {
@@ -156,15 +161,46 @@ export function ChatInterface({ threadId, currentUser, initialMessages = [], use
     }
   };
 
+  const handleMessageSelect = useCallback((messageId: string) => {
+    const message = messages.find(m => m.id === messageId);
+    if (message && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      setHighlightedMessageId(messageId);
+      setTimeout(() => setHighlightedMessageId(null), 3000);
+    }
+    setIsSearchOpen(false);
+  }, [messages]);
+
   return (
     <div className="flex flex-col md:flex-row h-full relative">
       {/* Mobile Menu Button */}
-      <button 
-        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-        className="md:hidden absolute top-4 left-4 z-20 p-2 rounded-md hover:bg-accent"
-      >
-        <Menu className="h-6 w-6" />
-      </button>
+      <div className="md:hidden absolute top-4 left-4 z-20 flex gap-2">
+        <button 
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="p-2 rounded-md hover:bg-accent"
+        >
+          <Menu className="h-6 w-6" />
+        </button>
+        <button
+          onClick={() => setIsSearchOpen(!isSearchOpen)}
+          className="p-2 rounded-md hover:bg-accent"
+        >
+          <Search className="h-6 w-6" />
+        </button>
+      </div>
+
+      {/* Search Dialog */}
+      <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Search Messages</DialogTitle>
+          </DialogHeader>
+          <MessageSearch
+            threadId={threadId}
+            onMessageSelect={handleMessageSelect}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Sidebar */}
       <div className={cn(
@@ -174,7 +210,13 @@ export function ChatInterface({ threadId, currentUser, initialMessages = [], use
       )}>
         <ThreadList
           threads={threads}
-          currentUser={currentUser || { id: user?.id || '', name: user?.fullName || '', email: user?.emailAddresses[0]?.emailAddress || '' }}
+          currentUser={currentUser || { 
+            id: user?.id || '', 
+            name: user?.fullName || '', 
+            email: user?.emailAddresses[0]?.emailAddress || '',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }}
           selectedThreadId={currentThread?.id}
           onThreadSelect={(threadId) => {
             const thread = threads.find(t => t.id === threadId);
@@ -188,6 +230,23 @@ export function ChatInterface({ threadId, currentUser, initialMessages = [], use
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Add search button in header */}
+        <div className="border-b p-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">
+            {currentThread?.title || 'Chat'}
+          </h2>
+          <button
+            onClick={() => setIsSearchOpen(true)}
+            className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm rounded-md hover:bg-accent"
+          >
+            <Search className="h-4 w-4" />
+            <span>Search</span>
+            <div className="ml-2 pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100">
+              <span className="text-xs">⌘</span>K
+            </div>
+          </button>
+        </div>
+
         {isConnecting && (
           <div className="bg-yellow-100 dark:bg-yellow-900 p-2 text-center text-sm">
             Connecting to chat server...
@@ -204,6 +263,8 @@ export function ChatInterface({ threadId, currentUser, initialMessages = [], use
               messages={messages}
               currentUser={currentUser}
               isLoading={isLoading}
+              highlightedMessageId={highlightedMessageId}
+              ref={messagesEndRef}
             />
             
             <MessageInput

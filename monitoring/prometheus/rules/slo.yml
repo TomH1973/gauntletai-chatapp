@@ -1,0 +1,123 @@
+groups:
+  - name: slo_alerts
+    rules:
+      # Message Delivery SLO
+      - alert: MessageDeliverySLOBreach
+        expr: |
+          (1 - (
+            rate(message_delivery_latency_seconds_bucket{le="0.15"}[5m])
+            /
+            rate(message_delivery_latency_seconds_count[5m])
+          )) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          slo: message_delivery
+        annotations:
+          summary: "Message Delivery SLO Breach"
+          description: "More than 5% of messages are taking longer than 150ms to deliver"
+
+      # Search Performance SLO
+      - alert: SearchLatencySLOBreach
+        expr: |
+          (1 - (
+            rate(search_duration_seconds_bucket{le="0.75"}[5m])
+            /
+            rate(search_duration_seconds_count[5m])
+          )) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          slo: search
+        annotations:
+          summary: "Search Latency SLO Breach"
+          description: "More than 5% of searches are taking longer than 750ms"
+
+      # Thread Load SLO
+      - alert: ThreadLoadSLOBreach
+        expr: |
+          (1 - (
+            rate(thread_load_duration_seconds_bucket{le="0.3"}[5m])
+            /
+            rate(thread_load_duration_seconds_count[5m])
+          )) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          slo: thread_load
+        annotations:
+          summary: "Thread Load SLO Breach"
+          description: "More than 5% of thread loads are taking longer than 300ms"
+
+      # Error Rate SLO
+      - alert: ErrorRateSLOBreach
+        expr: |
+          sum(rate(error_total[5m])) 
+          / 
+          sum(rate(request_total[5m])) 
+          > 0.005
+        for: 5m
+        labels:
+          severity: critical
+          slo: error_rate
+        annotations:
+          summary: "Error Rate SLO Breach"
+          description: "Error rate is above 0.5%"
+
+      # Business SLOs
+      - alert: MessageThroughputDrop
+        expr: |
+          rate(messages_total[5m]) 
+          < 
+          avg_over_time(rate(messages_total[24h])[5m]) * 0.7
+        for: 15m
+        labels:
+          severity: warning
+          slo: business
+        annotations:
+          summary: "Message Throughput Drop"
+          description: "Message throughput has dropped below 70% of 24h average"
+
+      - alert: UserEngagementDrop
+        expr: |
+          sum(websocket_active_connections) 
+          < 
+          avg_over_time(sum(websocket_active_connections)[24h]) * 0.7
+        for: 15m
+        labels:
+          severity: warning
+          slo: business
+        annotations:
+          summary: "User Engagement Drop"
+          description: "Active connections have dropped below 70% of 24h average"
+
+      # Resource SLOs
+      - alert: HighResourceUsage
+        expr: |
+          (
+            rate(process_cpu_seconds_total[5m]) * 100 > 80
+            or
+            (process_resident_memory_bytes / (4 * 1024 * 1024 * 1024)) > 0.8
+          )
+        for: 5m
+        labels:
+          severity: warning
+          slo: resources
+        annotations:
+          summary: "High Resource Usage"
+          description: "CPU > 80% or Memory > 80% of 4GB"
+
+      - alert: HighCacheMissRate
+        expr: |
+          (
+            sum(rate(cache_miss_total[5m]))
+            /
+            (sum(rate(cache_hit_total[5m])) + sum(rate(cache_miss_total[5m])))
+          ) > 0.3
+        for: 5m
+        labels:
+          severity: warning
+          slo: cache
+        annotations:
+          summary: "High Cache Miss Rate"
+          description: "Cache miss rate is above 30%" 

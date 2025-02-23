@@ -1,0 +1,135 @@
+groups:
+  - name: websocket_state
+    rules:
+      - alert: HighStateVerificationTime
+        expr: |
+          rate(websocket_state_verification_duration_seconds_sum[5m])
+          /
+          rate(websocket_state_verification_duration_seconds_count[5m])
+          > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High state verification time
+          description: State verification is taking longer than 500ms on average over 5 minutes
+
+      - alert: HighStateRestoreTime
+        expr: |
+          rate(websocket_state_restore_duration_seconds_sum[5m])
+          /
+          rate(websocket_state_restore_duration_seconds_count[5m])
+          > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High state restoration time
+          description: State restoration is taking longer than 1 second on average over 5 minutes
+
+      - alert: LargeStateSize
+        expr: |
+          rate(websocket_state_size_bytes_sum[5m])
+          /
+          rate(websocket_state_size_bytes_count[5m])
+          > 25000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Large state size
+          description: Average state size is larger than 25KB over 5 minutes
+
+      - alert: HighStateErrorRate
+        expr: |
+          sum(rate(websocket_state_errors_total[5m]))
+          /
+          sum(rate(websocket_state_verification_duration_seconds_count[5m]))
+          > 0.02
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High state error rate
+          description: State error rate is higher than 2% over 5 minutes
+
+      - alert: HighCacheMissRate
+        expr: |
+          sum(rate(websocket_cache_misses_total[5m]))
+          /
+          (
+            sum(rate(websocket_cache_hits_total[5m]))
+            +
+            sum(rate(websocket_cache_misses_total[5m]))
+          )
+          > 0.24
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High cache miss rate
+          description: Cache miss rate is higher than 24% over 5 minutes
+
+      - alert: HighConnectionDropRate
+        expr: |
+          sum(rate(websocket_errors_total{type="disconnect"}[5m]))
+          /
+          websocket_connections
+          > 0.005
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High connection drop rate
+          description: Connection drop rate is higher than 0.5% over 5 minutes
+
+      - alert: StateRestorationFailure
+        expr: |
+          sum(rate(websocket_state_errors_total{type="restore"}[5m]))
+          > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: State restoration failures detected
+          description: State restoration failures have been detected in the last minute
+
+      - alert: RecoverySystemDegraded
+        expr: |
+          websocket_recovery_health{status="degraded"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Recovery system degraded
+          description: The WebSocket recovery system is in a degraded state
+
+      - alert: RecoverySystemFailed
+        expr: |
+          websocket_recovery_health{status="failed"} > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Recovery system failed
+          description: The WebSocket recovery system has failed
+
+      - alert: HighMessageQueueLength
+        expr: |
+          websocket_message_queue_length > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High message queue length
+          description: Message queue length is higher than 1000 messages
+
+      - alert: MessageQueueGrowth
+        expr: |
+          delta(websocket_message_queue_length[15m]) > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Message queue growing
+          description: Message queue has grown by more than 500 messages in 15 minutes 

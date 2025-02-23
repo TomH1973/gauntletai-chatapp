@@ -1,11 +1,16 @@
-import { Message, Thread, User } from '@prisma/client';
-import type { MessageReaction } from './chat';
+import { Server as SocketIOServer } from 'socket.io';
+import { MessageStatus as PrismaMessageStatus } from '@prisma/client';
+
+export type UserStatus = 'ONLINE' | 'AWAY' | 'OFFLINE';
 
 export interface SocketData {
   userId: string;
   sessionId: string;
   threadIds: string[];
 }
+
+// Re-export Prisma enums
+export { PrismaMessageStatus as MessageStatus };
 
 export interface MessageEvent {
   threadId: string;
@@ -44,13 +49,20 @@ export interface TypingEvent {
 
 export interface PresenceEvent {
   userId: string;
-  name: string;
-  lastSeen?: Date;
+  status: UserStatus;
+  lastActivity: Date;
+}
+
+export interface PresenceData {
+  onlineUsers: string[];
+  userStatuses: Record<string, UserStatus>;
+  lastSeenTimes: Record<string, Date>;
 }
 
 export interface MessageStatusEvent {
   messageId: string;
-  status: 'SENT' | 'DELIVERED' | 'READ' | 'ERROR';
+  status: PrismaMessageStatus;
+  userId: string;
 }
 
 export interface MessageEditedEvent {
@@ -75,7 +87,7 @@ export interface ThreadParticipantEvent {
 }
 
 export interface ErrorEvent {
-  code: string;
+  code: SocketErrorCode;
   message: string;
   data?: any;
 }
@@ -107,7 +119,7 @@ export interface FileAttachmentEvent {
   files: Array<{
     id: string;
     name: string;
-    type: 'image' | 'video' | 'audio' | 'document';
+    type: FileType;
     size: number;
     mimeType: string;
     url: string;
@@ -119,7 +131,7 @@ export interface FileAttachmentAddedEvent {
   attachment: {
     id: string;
     name: string;
-    type: 'image' | 'video' | 'audio' | 'document';
+    type: FileType;
     size: number;
     mimeType: string;
     url: string;
@@ -140,7 +152,7 @@ export interface FileAttachmentRemovedEvent {
 }
 
 export interface ThreadCreateEvent {
-  title: string;
+  name: string;
   participants: Array<{
     userId: string;
     role: 'OWNER' | 'ADMIN' | 'MEMBER';
@@ -149,7 +161,7 @@ export interface ThreadCreateEvent {
 
 export interface ThreadCreatedEvent {
   id: string;
-  title: string;
+  name: string;
   createdAt: Date;
   createdBy: {
     id: string;
@@ -185,26 +197,20 @@ export interface ThreadParticipantUpdateEvent {
 export interface ThreadSettingsUpdateEvent {
   threadId: string;
   settings: {
-    title?: string;
     isPrivate?: boolean;
-    allowInvites?: boolean;
     allowReactions?: boolean;
-    allowThreading?: boolean;
+    allowReplies?: boolean;
     allowAttachments?: boolean;
-    retentionDays?: number;
   };
 }
 
 export interface ThreadSettingsUpdatedEvent {
   threadId: string;
   settings: {
-    title: string;
     isPrivate: boolean;
-    allowInvites: boolean;
     allowReactions: boolean;
-    allowThreading: boolean;
+    allowReplies: boolean;
     allowAttachments: boolean;
-    retentionDays: number;
   };
   updatedBy: {
     id: string;
@@ -213,54 +219,101 @@ export interface ThreadSettingsUpdatedEvent {
   updatedAt: Date;
 }
 
+export interface MessageReactionData {
+  messageId: string;
+  reaction: string;
+}
+
+export interface ErrorResponse {
+  code: string;
+  message: string;
+  details?: unknown;
+}
+
+export interface RateLimitResult {
+  allowed: boolean;
+  remaining: number;
+  burstRemaining?: number;
+  retryAfter?: number;
+}
+
+export enum SocketErrorCode {
+  // Authentication Errors
+  AUTHENTICATION_REQUIRED = 'AUTHENTICATION_REQUIRED',
+  INVALID_TOKEN = 'INVALID_TOKEN',
+  
+  // User Errors
+  USER_NOT_FOUND = 'USER_NOT_FOUND',
+  USER_OFFLINE = 'USER_OFFLINE',
+  
+  // Rate Limiting
+  RATE_LIMIT_EXCEEDED = 'RATE_LIMIT_EXCEEDED',
+  
+  // Input Validation
+  INVALID_INPUT = 'INVALID_INPUT',
+  INVALID_OPERATION = 'INVALID_OPERATION',
+  INVALID_FILE = 'INVALID_FILE',
+  
+  // Resource Errors
+  THREAD_NOT_FOUND = 'THREAD_NOT_FOUND',
+  MESSAGE_NOT_FOUND = 'MESSAGE_NOT_FOUND',
+  ATTACHMENT_NOT_FOUND = 'ATTACHMENT_NOT_FOUND',
+  THREAD_ACCESS_DENIED = 'THREAD_ACCESS_DENIED',
+  
+  // Operation Errors
+  OPERATION_FAILED = 'OPERATION_FAILED',
+  PERMISSION_DENIED = 'PERMISSION_DENIED',
+  UNAUTHORIZED = 'UNAUTHORIZED',
+  CONNECTION_ERROR = 'CONNECTION_ERROR',
+  MESSAGE_ERROR = 'MESSAGE_ERROR',
+  
+  // System Errors
+  INTERNAL_ERROR = 'INTERNAL_ERROR',
+  SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE'
+}
+
 export interface ServerToClientEvents {
   'error': (error: ErrorEvent) => void;
-  'message:new': (message: Message & { user: Partial<User>; tempId?: string }) => void;
-  'message:edited': (data: MessageEditedEvent) => void;
-  'message:deleted': (data: MessageDeletedEvent) => void;
+  'message:new': (message: Message) => void;
+  'message:edited': (message: Message) => void;
+  'message:deleted': (message: Message) => void;
   'message:status': (data: MessageStatusEvent) => void;
+  'message:updated': (message: Message) => void;
   'message:reactionAdded': (data: MessageReactionAddedEvent) => void;
   'message:reactionRemoved': (data: MessageReactionRemovedEvent) => void;
-  'presence:online': (data: PresenceEvent) => void;
-  'presence:offline': (data: PresenceEvent) => void;
-  'presence:pong': (data: { onlineUsers: string[]; lastSeenTimes: Record<string, Date> }) => void;
+  'message:attachmentAdded': (data: FileAttachmentAddedEvent) => void;
+  'message:attachmentRemoved': (data: FileAttachmentRemovedEvent) => void;
+  'presence:online': (data: { userId: string; name: string }) => void;
+  'presence:offline': (data: { userId: string; lastSeen?: string }) => void;
+  'presence:pong': (data: PresenceData) => void;
   'typing:update': (data: TypingEvent) => void;
+  'thread:updated': (thread: Thread) => void;
+  'thread:created': (thread: ThreadCreatedEvent) => void;
   'thread:participantAdded': (data: ThreadParticipantEvent) => void;
   'thread:participantRemoved': (data: ThreadParticipantEvent) => void;
   'thread:participantUpdated': (data: ThreadParticipantEvent) => void;
-  'message:attachmentAdded': (data: FileAttachmentAddedEvent) => void;
-  'message:attachmentRemoved': (data: FileAttachmentRemovedEvent) => void;
-  'thread:created': (data: ThreadCreatedEvent) => void;
   'thread:settingsUpdated': (data: ThreadSettingsUpdatedEvent) => void;
-  'message:reactionUpdated': (data: { messageId: string; reactions: MessageReaction[] }) => void;
+  'message:received': (message: MessageEvent & { id: string; sender: { id: string; name: string } }) => void;
+  'message:edited': (event: MessageEditEvent & { editedBy: { id: string; name: string } }) => void;
+  'message:deleted': (event: MessageDeletedEvent) => void;
+  'typing:update': (event: TypingEvent) => void;
+  'presence:update': (event: PresenceEvent) => void;
   'thread:joined': (threadId: string) => void;
   'thread:left': (threadId: string) => void;
-  'typing:started': (data: { threadId: string; userId: string }) => void;
-  'typing:stopped': (data: { threadId: string; userId: string }) => void;
 }
 
 export interface ClientToServerEvents {
-  'presence:ping': () => void;
-  'message:send': (data: {
-    content: string;
-    threadId: string;
-    parentId?: string;
-    tempId?: string;
-  }) => void;
-  'message:edit': (data: {
-    messageId: string;
-    content: string;
-  }) => void;
-  'message:delete': (messageId: string) => void;
-  'message:read': (messageId: string) => void;
-  'message:react': (data: { messageId: string; emoji: string }) => void;
+  'message:send': (event: MessageEvent) => void;
+  'message:edit': (event: MessageEditEvent) => void;
+  'message:delete': (event: MessageDeleteEvent) => void;
   'typing:start': (threadId: string) => void;
   'typing:stop': (threadId: string) => void;
+  'presence:update': (status: UserStatus) => void;
   'thread:join': (threadId: string) => void;
   'thread:leave': (threadId: string) => void;
-  'thread:participantAdded': (data: ThreadParticipantEvent) => void;
-  'thread:participantRemoved': (data: ThreadParticipantEvent) => void;
-  'thread:participantUpdated': (data: ThreadParticipantEvent) => void;
+  'message:addReaction': (data: MessageReactionEvent) => void;
+  'message:removeReaction': (data: MessageReactionEvent) => void;
+  'message:read': (messageId: string) => void;
   'message:addAttachment': (data: FileAttachmentEvent) => void;
   'message:removeAttachment': (data: { messageId: string; attachmentId: string }) => void;
   'thread:create': (data: ThreadCreateEvent) => void;
@@ -268,14 +321,89 @@ export interface ClientToServerEvents {
   'thread:removeParticipant': (data: ThreadParticipantRemoveEvent) => void;
   'thread:updateParticipant': (data: ThreadParticipantUpdateEvent) => void;
   'thread:updateSettings': (data: ThreadSettingsUpdateEvent) => void;
+  'presence:ping': () => void;
 }
 
-export enum SocketErrorCode {
-  MESSAGE_NOT_FOUND = 'MESSAGE_NOT_FOUND',
-  THREAD_NOT_FOUND = 'THREAD_NOT_FOUND',
-  THREAD_ACCESS_DENIED = 'THREAD_ACCESS_DENIED',
-  REACTION_FAILED = 'REACTION_FAILED',
-  UNAUTHORIZED = 'UNAUTHORIZED',
-  INVALID_OPERATION = 'INVALID_OPERATION',
-  INTERNAL_ERROR = 'INTERNAL_ERROR'
-} 
+export interface Message {
+  id: string;
+  content: string;
+  userId: string;
+  threadId: string;
+  parentId: string | null;
+  status: PrismaMessageStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  user: {
+    id: string;
+    name: string;
+    image?: string;
+  };
+  parent?: Message;
+  tempId?: string;
+}
+
+export interface Thread {
+  id: string;
+  name: string;
+  createdAt: Date;
+  updatedAt: Date;
+  lastMessageAt: Date | null;
+  participants: ThreadParticipant[];
+  settings?: ThreadSettings;
+}
+
+export interface ThreadParticipant {
+  id: string;
+  userId: string;
+  threadId: string;
+  role: 'OWNER' | 'ADMIN' | 'MEMBER';
+  user: {
+    id: string;
+    name: string;
+    image?: string;
+  };
+}
+
+export interface ThreadSettings {
+  isPrivate: boolean;
+  allowReactions: boolean;
+  allowReplies: boolean;
+  allowAttachments: boolean;
+}
+
+export interface MessageReaction {
+  id: string;
+  emoji: string;
+  userId: string;
+  messageId: string;
+  createdAt: Date;
+  user: {
+    id: string;
+    name: string;
+  };
+}
+
+export interface FileAttachment {
+  id: string;
+  filename: string;
+  key: string;
+  url: string;
+  size: number;
+  mimeType: string;
+  fileType: FileType;
+  isPublic: boolean;
+  isDeleted: boolean;
+  messageId: string | null;
+  uploaderId: string;
+  uploader: {
+    id: string;
+    name: string;
+  };
+}
+
+export type SocketServer = SocketIOServer<
+  ClientToServerEvents,
+  ServerToClientEvents,
+  {},
+  SocketData
+>; 

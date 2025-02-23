@@ -1,13 +1,18 @@
-import { Socket, Server } from 'socket.io';
-import type { ClientToServerEvents, ServerToClientEvents } from '../../types/chat.js';
-import type { PresenceManager } from './presence.js';
-import type { MessageHandler } from './messages.js';
-import type { ThreadHandler } from './threads.js';
-import type { TypingHandler } from './typing.js';
+import { Socket } from 'socket.io';
+import type { 
+  ClientToServerEvents, 
+  ServerToClientEvents, 
+  SocketData,
+  SocketServer
+} from '../../types/socket';
+import type { PresenceManager } from './presence';
+import type { MessageHandler } from './messages';
+import type { ThreadHandler } from './threads';
+import type { TypingHandler } from './typing';
 import { PrismaClient } from '@prisma/client';
 
 interface ConnectionDependencies {
-  io: Server<ClientToServerEvents, ServerToClientEvents>;
+  io: SocketServer;
   presenceManager: PresenceManager;
   messageHandler: MessageHandler;
   threadHandler: ThreadHandler;
@@ -17,7 +22,7 @@ interface ConnectionDependencies {
 }
 
 export async function handleConnection(
-  socket: Socket<ClientToServerEvents, ServerToClientEvents>,
+  socket: Socket<ClientToServerEvents, ServerToClientEvents, {}, SocketData>,
   deps: ConnectionDependencies
 ) {
   const userId = socket.handshake.auth.userId;

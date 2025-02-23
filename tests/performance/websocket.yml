@@ -1,0 +1,46 @@
+config:
+  target: "ws://localhost:3002/socket.io/?EIO=4&transport=websocket"
+  phases:
+    - duration: 30
+      arrivalRate: 1
+      rampTo: 10
+      name: "Warm up"
+    - duration: 60
+      arrivalRate: 10
+      name: "Sustained load"
+    - duration: 30
+      arrivalRate: 10
+      rampTo: 20
+      name: "Scale up"
+    - duration: 60
+      arrivalRate: 20
+      name: "Peak load"
+    - duration: 30
+      arrivalRate: 20
+      rampTo: 0
+      name: "Scale down"
+  ws:
+    headers:
+      X-User-ID: "test_user_{{ $randomNumber(0, 1000000) }}"
+  plugins:
+    metrics-by-endpoint: {}
+    expect: {}
+
+scenarios:
+  - name: "WebSocket chat test"
+    engine: "ws"
+    flow:
+      - send: "40"
+      - think: 1
+      - send: 
+          data: '42["thread:join",{"threadId":"thread_{{ Math.floor($iteration / 5) }}","userId":"{{ $headers.X-User-ID }}"}]'
+      - think: 1
+      - send:
+          data: '42["message:send",{"threadId":"thread_{{ Math.floor($iteration / 5) }}","content":"Test message from {{ $headers.X-User-ID }}","id":"msg_{{ $headers.X-User-ID }}_{{ Date.now() }}","senderId":"{{ $headers.X-User-ID }}","timestamp":{{ Date.now() }}}]'
+      - think: 2
+      - expect:
+          - data: '42["message:received",{"id":"msg_{{ $headers.X-User-ID }}_*","threadId":"thread_{{ Math.floor($iteration / 5) }}"}]'
+      - think: 1
+      - send:
+          data: '42["metrics:get",{}]'
+      - think: 1 

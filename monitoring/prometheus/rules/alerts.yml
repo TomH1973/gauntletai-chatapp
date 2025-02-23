@@ -1,0 +1,337 @@
+groups:
+  - name: chat_app_alerts
+    rules:
+      # P0 Critical Alerts
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(error_count_total[5m])) by (service)
+          / sum(rate(request_count_total[5m])) by (service)
+          > 0.01
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: High error rate detected
+          description: "Service {{ $labels.service }} has error rate > 1% (current value: {{ $value }})"
+
+      - alert: MessageLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(message_delivery_seconds_bucket[5m])) by (le)) > 0.2
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Message delivery latency too high
+          description: "95th percentile message delivery latency is > 200ms (current value: {{ $value }}s)"
+
+      - alert: EncryptionFailure
+        expr: sum(rate(encryption_errors_total[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Encryption failures detected
+          description: "Encryption operations are failing ({{ $value }} failures/s)"
+
+      - alert: RateLimitBypass
+        expr: sum(rate(rate_limit_bypass_total[5m])) > 10
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Rate limit bypasses detected
+          description: "Rate limits are being bypassed ({{ $value }} bypasses/min)"
+
+      # Rate Limiting Alerts
+      - alert: HighRateLimitHits
+        expr: |
+          sum(rate(rate_limit_hits_total[5m])) by (action)
+          / sum(rate(request_count_total[5m])) by (action)
+          > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High rate limit hits detected
+          description: "Action {{ $labels.action }} is hitting rate limits > 10% of the time (current value: {{ $value * 100 }}%)"
+
+      - alert: SuspiciousRateLimitPattern
+        expr: |
+          sum(rate(rate_limit_hits_total[1m])) by (userId)
+          > 100
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Suspicious rate limit pattern detected
+          description: "User {{ $labels.userId }} is hitting rate limits frequently ({{ $value }} hits/min)"
+
+      # File Upload Alerts
+      - alert: HighFileUploadFailures
+        expr: |
+          sum(rate(file_upload_failures_total[5m])) by (type)
+          / sum(rate(file_upload_attempts_total[5m])) by (type)
+          > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High file upload failure rate
+          description: "File type {{ $labels.type }} has > 10% upload failures (current value: {{ $value * 100 }}%)"
+
+      - alert: LargeFileUploads
+        expr: histogram_quantile(0.95, sum(rate(file_upload_size_bytes_bucket[5m])) by (le)) > 52428800
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Large file uploads detected
+          description: "95th percentile file upload size > 50MB (current value: {{ $value | humanize }}B)"
+
+      - alert: HighUploadBandwidth
+        expr: sum(rate(file_upload_bytes_total[5m])) > 10485760
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High upload bandwidth usage
+          description: "Upload bandwidth > 10MB/s (current value: {{ $value | humanize }}B/s)"
+
+      # P1 Warning Alerts
+      - alert: HighCPUUsage
+        expr: avg(rate(process_cpu_seconds_total[5m])) by (service) > 0.7
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High CPU usage detected
+          description: "Service {{ $labels.service }} CPU usage > 70% (current value: {{ $value * 100 }}%)"
+
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes / process_heap_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High memory usage detected
+          description: "Memory usage > 80% (current value: {{ $value * 100 }}%)"
+
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 0.15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High response time detected
+          description: "95th percentile response time > 150ms (current value: {{ $value }}s)"
+
+      - alert: HighCacheMissRate
+        expr: |
+          sum(rate(cache_miss_total[5m])) by (cache)
+          / sum(rate(cache_access_total[5m])) by (cache)
+          > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High cache miss rate detected
+          description: "Cache {{ $labels.cache }} miss rate > 20% (current value: {{ $value * 100 }}%)"
+
+      # System Health
+      - alert: ThreadDeadlocks
+        expr: thread_deadlocks_total > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Thread deadlocks detected
+          description: "{{ $value }} thread deadlocks detected"
+
+      - alert: HighConnectionErrors
+        expr: rate(websocket_connection_errors_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: High WebSocket connection error rate
+          description: "WebSocket connection errors > 10/min (current value: {{ $value }}/min)"
+
+      - alert: RecoveryQueueGrowing
+        expr: delta(recovery_queue_length[10m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Recovery queue is growing
+          description: "Error recovery queue growing by {{ $value }} tasks in 10m"
+
+      - alert: DeadLetterQueueGrowing
+        expr: delta(dead_letter_queue_length[1h]) > 1000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Dead letter queue growing rapidly
+          description: "Dead letter queue growing by {{ $value }} messages in 1h"
+
+      # User Experience
+      - alert: HighMessageFailureRate
+        expr: |
+          sum(rate(message_delivery_failures_total[5m]))
+          / sum(rate(message_delivery_attempts_total[5m]))
+          > 0.001
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: High message failure rate
+          description: "Message delivery failure rate > 0.1% (current value: {{ $value * 100 }}%)"
+
+      - alert: SearchLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(search_duration_seconds_bucket[5m])) by (le)) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Search latency too high
+          description: "95th percentile search latency > 500ms (current value: {{ $value }}s)"
+
+      - alert: SearchCacheHitRateLow
+        expr: |
+          sum(rate(search_cache_hits_total[5m]))
+          / (sum(rate(search_cache_hits_total[5m])) + sum(rate(search_cache_misses_total[5m])))
+          < 0.8
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Search cache hit rate too low
+          description: "Cache hit rate < 80% (current value: {{ $value | humanizePercentage }})"
+
+      - alert: SearchErrorRateHigh
+        expr: rate(search_errors_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High search error rate
+          description: "Search error rate > 1% (current value: {{ $value | humanizePercentage }})"
+
+      # Security
+      - alert: AuthenticationFailures
+        expr: rate(authentication_failures_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High authentication failure rate
+          description: "Authentication failures > 100/min (current value: {{ $value }}/min)"
+
+      - alert: SuspiciousActivity
+        expr: rate(security_incident_total{severity="high"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Suspicious activity detected
+          description: "High severity security incidents detected ({{ $value }} incidents/min)"
+
+      # Resource Constraints
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Redis memory usage high
+          description: "Redis memory usage > 80% (current value: {{ $value * 100 }}%)"
+
+      - alert: DatabaseConnectionsHigh
+        expr: postgresql_numbackends / postgresql_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Database connections near limit
+          description: "Database connections > 80% of limit (current value: {{ $value * 100 }}%)"
+
+      # Rate Limit Cache Alerts
+      - alert: HighRateLimitCacheMissRate
+        expr: |
+          sum(rate(rate_limit_cache_misses_total[5m])) by (action)
+          / (
+            sum(rate(rate_limit_cache_hits_total[5m])) by (action)
+            + sum(rate(rate_limit_cache_misses_total[5m])) by (action)
+          ) > 0.3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High rate limit cache miss rate
+          description: "Action {{ $labels.action }} has cache miss rate > 30% (current value: {{ $value * 100 }}%)"
+
+      - alert: RateLimitCacheNearCapacity
+        expr: rate_limit_cache_size / 10000 > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Rate limit cache near capacity
+          description: "Cache size > 80% of maximum (current value: {{ $value * 100 }}%)"
+
+      - alert: SlowRateLimitCacheOperations
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(rate_limit_cache_operation_duration_seconds_bucket[5m])) by (operation, le)
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Slow rate limit cache operations
+          description: "95th percentile cache {{ $labels.operation }} operations > 10ms (current value: {{ $value * 1000 }}ms)"
+
+      # Rate Limit Anomaly Alerts
+      - alert: UserRateLimitAnomalies
+        expr: |
+          sum(rate(rate_limit_anomalies_total[5m])) by (userId)
+          > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Multiple rate limit anomalies detected for user
+          description: "User {{ $labels.userId }} has triggered {{ $value }} rate limit anomalies in 5m"
+
+      - alert: ActionSpecificAnomalies
+        expr: |
+          sum(rate(rate_limit_anomalies_total[5m])) by (action)
+          > 20
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: High anomaly rate for specific action
+          description: "Action {{ $labels.action }} has {{ $value }} anomalies/min"
+
+      - alert: GlobalAnomalySpike
+        expr: |
+          sum(rate(rate_limit_anomalies_total[1m]))
+          > 50
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Global spike in rate limit anomalies
+          description: "{{ $value }} anomalies/min across all actions"
+
+      - alert: SuspiciousUserBehavior
+        expr: |
+          sum(rate(rate_limit_blocks_total[5m])) by (userId)
+          / sum(rate(rate_limit_requests_total[5m])) by (userId)
+          > 0.3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Suspicious user behavior detected
+          description: "User {{ $labels.userId }} has >30% rate limit block rate" 

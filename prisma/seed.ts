@@ -1,139 +1,116 @@
-import { PrismaClient, SystemRole, ParticipantRole, MessageStatus } from '@prisma/client';
+import { PrismaClient, User, Thread, Message, MessageStatus } from '@prisma/client';
+import { faker } from '@faker-js/faker';
+import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  // Create users
-  const alice = await prisma.user.create({
-    data: {
-      email: 'alice@example.com',
-      name: 'Alice Johnson',
-      systemRole: SystemRole.MEMBER,
-      clerkId: 'user_alice',
-      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=alice'
+  try {
+    // Create test users
+    const users: User[] = [];
+    for (let i = 0; i < 20; i++) {
+      const user = await prisma.user.create({
+        data: {
+          name: faker.person.fullName(),
+          email: faker.internet.email(),
+          image: faker.image.avatar(),
+          isActive: true,
+          lastSeen: new Date(),
+        }
+      });
+      users.push(user);
     }
-  });
+    console.log('Created test users');
 
-  const bob = await prisma.user.create({
-    data: {
-      email: 'bob@example.com',
-      name: 'Bob Smith',
-      systemRole: SystemRole.MEMBER,
-      clerkId: 'user_bob',
-      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=bob'
-    }
-  });
+    // Create test threads
+    const threads: Thread[] = [];
+    for (let i = 0; i < 5; i++) {
+      const thread = await prisma.thread.create({
+        data: {
+          name: faker.lorem.words(3),
+          title: faker.lorem.sentence(),
+          lastMessageAt: new Date(),
+          participants: {
+            create: users.slice(0, 5).map(user => ({
+              userId: user.id,
+            }))
+          },
+          settings: {
+            create: {
+              isPrivate: false,
+              allowReactions: true,
+              allowReplies: true,
+              allowAttachments: true,
+              updatedBy: users[0].id
+            }
+          }
+        }
+      });
+      threads.push(thread);
 
-  const carol = await prisma.user.create({
-    data: {
-      email: 'carol@example.com',
-      name: 'Carol Williams',
-      systemRole: SystemRole.MEMBER,
-      clerkId: 'user_carol',
-      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=carol'
-    }
-  });
-
-  const dave = await prisma.user.create({
-    data: {
-      email: 'dave@example.com',
-      name: 'Dave Brown',
-      systemRole: SystemRole.MEMBER,
-      clerkId: 'user_dave',
-      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=dave'
-    }
-  });
-
-  // Create threads
-  const apiThread = await prisma.thread.create({
-    data: {
-      name: 'API Endpoints Discussion',
-      participants: {
-        create: [
-          { userId: alice.id, role: ParticipantRole.OWNER },
-          { userId: bob.id, role: ParticipantRole.MEMBER },
-          { userId: carol.id, role: ParticipantRole.MEMBER }
-        ]
+      // Add 50 messages to each thread
+      for (let j = 0; j < 50; j++) {
+        const message = await prisma.message.create({
+          data: {
+            content: faker.lorem.paragraph(),
+            threadId: thread.id,
+            userId: users[Math.floor(Math.random() * users.length)].id,
+            status: MessageStatus.SENT,
+            messageReactions: {
+              create: {
+                emoji: ['👍', '❤️', '😂', '😮', '😢', '😡'][Math.floor(Math.random() * 6)],
+                users: [users[Math.floor(Math.random() * users.length)].id],
+                count: 1
+              }
+            }
+          }
+        });
       }
     }
-  });
+    console.log('Created test threads with messages');
 
-  // Add messages to API thread
-  await prisma.message.create({
-    data: {
-      content: 'What authentication method should we use for the API endpoints?',
-      threadId: apiThread.id,
-      userId: alice.id,
-      status: MessageStatus.SENT
-    }
-  });
-
-  await prisma.message.create({
-    data: {
-      content: 'I suggest we use JWT tokens with short expiration times.',
-      threadId: apiThread.id,
-      userId: bob.id,
-      status: MessageStatus.SENT
-    }
-  });
-
-  await prisma.message.create({
-    data: {
-      content: 'Good idea. We should also implement refresh tokens and rate limiting.',
-      threadId: apiThread.id,
-      userId: carol.id,
-      status: MessageStatus.SENT
-    }
-  });
-
-  // Create project timeline thread
-  const timelineThread = await prisma.thread.create({
-    data: {
-      name: 'Project Timeline',
-      participants: {
-        create: [
-          { userId: dave.id, role: ParticipantRole.OWNER },
-          { userId: alice.id, role: ParticipantRole.MEMBER },
-          { userId: bob.id, role: ParticipantRole.MEMBER }
-        ]
+    // Create a specific thread for load testing
+    const loadTestThread = await prisma.thread.create({
+      data: {
+        name: 'load-test-thread',
+        title: 'Thread for Load Testing',
+        lastMessageAt: new Date(),
+        participants: {
+          create: users.map(user => ({
+            userId: user.id,
+          }))
+        },
+        settings: {
+          create: {
+            isPrivate: false,
+            allowReactions: true,
+            allowReplies: true,
+            allowAttachments: true,
+            updatedBy: users[0].id
+          }
+        }
       }
-    }
-  });
+    });
 
-  // Add messages to timeline thread
-  await prisma.message.create({
-    data: {
-      content: 'Here\'s the proposed timeline for the next phase.',
-      threadId: timelineThread.id,
-      userId: dave.id,
-      status: MessageStatus.SENT
+    // Add 20 initial messages to load test thread
+    for (let i = 0; i < 20; i++) {
+      await prisma.message.create({
+        data: {
+          content: faker.lorem.paragraph(),
+          threadId: loadTestThread.id,
+          userId: users[Math.floor(Math.random() * users.length)].id,
+          status: MessageStatus.SENT
+        }
+      });
     }
-  });
+    console.log('Created load test thread');
 
-  await prisma.message.create({
-    data: {
-      content: 'The backend tasks look good, but we might need more time for testing.',
-      threadId: timelineThread.id,
-      userId: alice.id,
-      status: MessageStatus.SENT
-    }
-  });
-
-  await prisma.message.create({
-    data: {
-      content: 'Agreed. Let\'s add an extra week for QA and security testing.',
-      threadId: timelineThread.id,
-      userId: bob.id,
-      status: MessageStatus.SENT
-    }
-  });
+  } catch (error) {
+    console.error('Error seeding database:', error);
+    process.exit(1);
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  }); 
+main(); 

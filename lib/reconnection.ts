@@ -1,11 +1,13 @@
-import { Server, Socket } from 'socket.io';
+import { Socket } from 'socket.io';
 import { Redis } from 'ioredis';
 import { logger } from './logger';
 import { prisma } from './prisma';
 import { socketState } from './socketState';
+import { recoveryMetrics } from './recoveryMetrics';
+import { metrics } from './metrics';
 
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
 const MISSED_EVENT_TTL = 300; // 5 minutes in seconds
+const STATE_SNAPSHOT_TTL = 3600; // 1 hour in seconds
 
 interface MissedEvent {
   type: string;
@@ -13,11 +15,53 @@ interface MissedEvent {
   timestamp: number;
 }
 
+interface ThreadState {
+  lastMessageId: string;
+  lastReadTimestamp: string;
+  participants: string[];
+  typing: string[];
+}
+
+interface UserState {
+  activeThreads: string[];
+  presence: 'online' | 'away' | 'offline';
+  lastSeen: string;
+  deviceId?: string;
+}
+
 export class ReconnectionManager {
-  constructor(private io: Server) {}
+  constructor(private redis: Redis) {
+    this.setupStateCleanup();
+  }
 
   private getMissedEventsKey(userId: string): string {
     return `missed_events:${userId}`;
+  }
+
+  private getThreadStateKey(threadId: string): string {
+    return `thread_state:${threadId}`;
+  }
+
+  private getUserStateKey(userId: string): string {
+    return `user_state:${userId}`;
+  }
+
+  private setupStateCleanup(): void {
+    // Cleanup expired state snapshots every hour
+    setInterval(async () => {
+      try {
+        const pattern = 'thread_state:*';
+        const keys = await this.redis.keys(pattern);
+        for (const key of keys) {
+          const ttl = await this.redis.ttl(key);
+          if (ttl <= 0) {
+            await this.redis.del(key);
+          }
+        }
+      } catch (error) {
+        logger.error('State cleanup error', { error });
+      }
+    }, 3600000);
   }
 
   async handleDisconnect(socket: Socket): Promise<void> {
@@ -25,7 +69,10 @@ export class ReconnectionManager {
     const isOffline = await socketState.removeUserSocket(userId, socket.id);
     
     if (isOffline) {
-      // User has no other active connections
+      // Save user state before going offline
+      await this.saveUserState(userId, socket);
+      
+      // Update user status
       await prisma.user.update({
         where: { id: userId },
         data: { lastSeen: new Date() }
@@ -40,15 +87,22 @@ export class ReconnectionManager {
       // Add new socket connection
       await socketState.addUserSocket(userId, socket.id);
 
-      // Rejoin user's threads
-      const userThreads = await prisma.threadParticipant.findMany({
-        where: { userId },
-        select: { threadId: true }
-      });
-
-      userThreads.forEach(({ threadId }) => {
-        socket.join(threadId);
-      });
+      // Restore user state
+      const userState = await this.restoreUserState(userId);
+      if (userState) {
+        // Rejoin active threads
+        for (const threadId of userState.activeThreads) {
+          socket.join(threadId);
+          // Restore thread state
+          const threadState = await this.restoreThreadState(threadId);
+          if (threadState) {
+            socket.emit('state:restored', {
+              threadId,
+              state: threadState
+            });
+          }
+        }
+      }
 
       // Process missed events
       await this.processMissedEvents(socket);
@@ -59,10 +113,96 @@ export class ReconnectionManager {
         data: { lastSeen: new Date() }
       });
 
-      logger.info('User reconnected', { userId });
+      socket.emit('reconnection:complete', {
+        success: true,
+        timestamp: new Date().toISOString()
+      });
+
+      logger.info('User reconnected with state restoration', { userId });
     } catch (error) {
       logger.error('Error handling reconnection', { userId, error });
+      socket.emit('reconnection:complete', {
+        success: false,
+        error: 'State restoration failed'
+      });
     }
+  }
+
+  async verifyState(socket: Socket, threadId: string): Promise<void> {
+    try {
+      const userId = socket.data.user.id;
+      const threadState = await this.restoreThreadState(threadId);
+      
+      if (threadState) {
+        socket.emit('state:verified', {
+          threadId,
+          state: threadState,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        // Thread state not found, fetch from database
+        const thread = await prisma.thread.findUnique({
+          where: { id: threadId },
+          include: {
+            participants: true,
+            messages: {
+              orderBy: { createdAt: 'desc' },
+              take: 1
+            }
+          }
+        });
+
+        if (thread) {
+          const newState: ThreadState = {
+            lastMessageId: thread.messages[0]?.id,
+            lastReadTimestamp: new Date().toISOString(),
+            participants: thread.participants.map(p => p.id),
+            typing: []
+          };
+
+          await this.saveThreadState(threadId, newState);
+          socket.emit('state:verified', {
+            threadId,
+            state: newState,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+    } catch (error) {
+      logger.error('State verification error', { threadId, error });
+      socket.emit('state:error', {
+        threadId,
+        error: 'State verification failed'
+      });
+    }
+  }
+
+  private async saveThreadState(threadId: string, state: ThreadState): Promise<void> {
+    const key = this.getThreadStateKey(threadId);
+    await this.redis.setex(key, STATE_SNAPSHOT_TTL, JSON.stringify(state));
+  }
+
+  private async restoreThreadState(threadId: string): Promise<ThreadState | null> {
+    const key = this.getThreadStateKey(threadId);
+    const state = await this.redis.get(key);
+    return state ? JSON.parse(state) : null;
+  }
+
+  private async saveUserState(userId: string, socket: Socket): Promise<void> {
+    const key = this.getUserStateKey(userId);
+    const state: UserState = {
+      activeThreads: Array.from(socket.rooms).filter(room => room.startsWith('thread:')),
+      presence: 'offline',
+      lastSeen: new Date().toISOString(),
+      deviceId: socket.data.deviceId
+    };
+    await this.redis.setex(key, STATE_SNAPSHOT_TTL, JSON.stringify(state));
+  }
+
+  private async restoreUserState(userId: string): Promise<UserState | null> {
+    const key = this.getUserStateKey(userId);
+    const state = await this.redis.get(key);
+    return state ? JSON.parse(state) : null;
   }
 
   async storeMissedEvent(userId: string, type: string, data: any): Promise<void> {
@@ -76,8 +216,8 @@ export class ReconnectionManager {
     };
 
     const key = this.getMissedEventsKey(userId);
-    await redis.lpush(key, JSON.stringify(event));
-    await redis.expire(key, MISSED_EVENT_TTL);
+    await this.redis.lpush(key, JSON.stringify(event));
+    await this.redis.expire(key, MISSED_EVENT_TTL);
   }
 
   private async processMissedEvents(socket: Socket): Promise<void> {
@@ -86,7 +226,7 @@ export class ReconnectionManager {
 
     try {
       // Get all missed events
-      const events = await redis.lrange(key, 0, -1);
+      const events = await this.redis.lrange(key, 0, -1);
       
       if (events.length === 0) return;
 
@@ -101,7 +241,7 @@ export class ReconnectionManager {
       }
 
       // Clear processed events
-      await redis.del(key);
+      await this.redis.del(key);
 
       logger.debug('Processed missed events', {
         userId,
@@ -126,4 +266,4 @@ export class ReconnectionManager {
   }
 }
 
-export const createReconnectionManager = (io: Server) => new ReconnectionManager(io); 
+export const createReconnectionManager = (redis: Redis) => new ReconnectionManager(redis); 

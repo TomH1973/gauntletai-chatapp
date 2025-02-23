@@ -1,4 +1,6 @@
-# Middleware Configuration
+# [DEPRECATED] Middleware Configuration
+
+> ⚠️ **DEPRECATED**: This document has been consolidated into the new [`IMPLEMENTATION.md`](./IMPLEMENTATION.md). Please refer to that document for the most up-to-date information.
 
 ## Current Implementation
 

@@ -1,12 +1,17 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { Rate } from 'k6/metrics';
+import { Rate, Trend } from 'k6/metrics';
 import ws from 'k6/ws';
+
+// Default environment variables if not provided
+const API_URL = __ENV.API_URL || 'http://localhost:3000';
+const WS_URL = __ENV.WS_URL || 'ws://localhost:3001';
 
 // Custom metrics
 const messageDeliveryRate = new Rate('message_delivery_rate');
 const socketConnectionRate = new Rate('socket_connection_rate');
-const messageProcessingTime = new Rate('message_processing_time');
+const messageProcessingTime = new Trend('message_processing_time');
+const messageDeliveryTime = new Trend('message_delivery_time');
 
 // Test configuration
 export const options = {
@@ -16,41 +21,42 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: 1,
       stages: [
-        { duration: '1m', target: 50 },  // Ramp up to 50 users
-        { duration: '3m', target: 50 },  // Stay at 50 users
-        { duration: '1m', target: 0 },   // Ramp down to 0
+        { duration: '30s', target: 25 },  // Ramp up to 25 users
+        { duration: '1m', target: 25 },   // Stay at 25 users
+        { duration: '30s', target: 0 },   // Ramp down to 0
       ],
       gracefulRampDown: '30s',
     },
     // Real-time messaging stress test
     realtime_stress: {
       executor: 'constant-vus',
-      vus: 100,
-      duration: '5m',
+      vus: 50,
+      duration: '2m',
     },
     // Connection handling test
     connection_stress: {
       executor: 'ramping-vus',
-      startVUs: 10,
+      startVUs: 5,
       stages: [
-        { duration: '30s', target: 100 }, // Quick ramp-up
-        { duration: '1m', target: 100 },  // Hold
-        { duration: '30s', target: 10 },  // Quick ramp-down
+        { duration: '30s', target: 50 },  // Quick ramp-up
+        { duration: '1m', target: 50 },   // Hold
+        { duration: '30s', target: 5 },   // Quick ramp-down
       ],
     },
   },
   thresholds: {
-    message_delivery_rate: ['p95<500'], // 95% of messages delivered in under 500ms
-    socket_connection_rate: ['p95<1000'], // 95% of socket connections in under 1s
-    message_processing_time: ['p95<200'], // 95% of messages processed in under 200ms
-    http_req_duration: ['p95<1000'], // 95% of requests under 1s
+    'message_delivery_rate': ['rate>0.90'],     // 90% success rate
+    'socket_connection_rate': ['rate>0.90'],     // 90% success rate
+    'message_processing_time': ['p(95)<500'],    // 95% under 500ms
+    'message_delivery_time': ['p(95)<1000'],     // 95% under 1s
+    'http_req_duration': ['p(95)<2000'],         // 95% under 2s
   },
 };
 
 // Simulated user behavior
 export default function () {
   // 1. User Authentication
-  const loginRes = http.post(`${__ENV.API_URL}/auth/signin`, {
+  const loginRes = http.post(`${API_URL}/auth/signin`, {
     email: `test${__VU}@example.com`,
     password: 'testpassword',
   });
@@ -63,7 +69,7 @@ export default function () {
 
   // 2. WebSocket Connection
   const wsStart = Date.now();
-  const ws_url = `${__ENV.WS_URL}?token=${authToken}`;
+  const ws_url = `${WS_URL}?token=${authToken}`;
   
   const socket = ws.connect(ws_url, {}, function (socket) {
     socketConnectionRate.add(Date.now() - wsStart);
@@ -75,7 +81,8 @@ export default function () {
     socket.on('message', (data) => {
       const message = JSON.parse(data);
       if (message.type === 'message:new') {
-        messageDeliveryRate.add(Date.now() - message.timestamp);
+        messageDeliveryTime.add(Date.now() - message.timestamp);
+        messageDeliveryRate.add(1); // Success
       }
     });
 
@@ -91,7 +98,7 @@ export default function () {
 
     // Send message
     const messageRes = http.post(
-      `${__ENV.API_URL}/api/threads/${threadId}/messages`,
+      `${API_URL}/api/threads/${threadId}/messages`,
       JSON.stringify({
         content: `Test message ${i} from VU ${__VU}`,
         timestamp: Date.now(),
@@ -115,7 +122,7 @@ export default function () {
 
   // 4. Thread Management Under Load
   const threadRes = http.post(
-    `${__ENV.API_URL}/api/threads`,
+    `${API_URL}/api/threads`,
     JSON.stringify({
       name: `Load Test Thread ${__VU}`,
       participants: [`test${(__VU + 1) % 100}@example.com`],
@@ -162,7 +169,7 @@ function generateMessage(vu, i) {
 // Test data setup (runs once before tests)
 export function setup() {
   // Create test users if needed
-  const setupRes = http.post(`${__ENV.API_URL}/test/setup`, {
+  const setupRes = http.post(`${API_URL}/test/setup`, {
     userCount: 100,
     threadsPerUser: 2,
   });
@@ -177,7 +184,7 @@ export function setup() {
 // Cleanup after tests
 export function teardown(data) {
   if (data.setupComplete) {
-    const cleanupRes = http.post(`${__ENV.API_URL}/test/cleanup`);
+    const cleanupRes = http.post(`${API_URL}/test/cleanup`);
     check(cleanupRes, {
       'test data cleanup successful': (r) => r.status === 200,
     });

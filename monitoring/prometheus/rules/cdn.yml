@@ -1,0 +1,87 @@
+groups:
+  - name: cdn
+    rules:
+      - alert: HighCDNErrorRate
+        expr: |
+          sum(rate(cdn_errors_total[5m])) by (operation)
+          / 
+          sum(rate(cdn_requests_total[5m])) by (operation)
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High CDN error rate
+          description: "CDN error rate is above 5% for operation {{ $labels.operation }}"
+
+      - alert: LowCDNCacheHitRate
+        expr: |
+          sum(rate(cdn_cache_hits_total[5m])) by (type)
+          / 
+          (sum(rate(cdn_cache_hits_total[5m])) by (type) + sum(rate(cdn_cache_misses_total[5m])) by (type))
+          < 0.85
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Low CDN cache hit rate
+          description: "CDN cache hit rate is below 85% for content type {{ $labels.type }}"
+
+      - alert: HighCDNBandwidthUsage
+        expr: |
+          sum(rate(cdn_bandwidth_bytes[5m])) by (type)
+          > 1e9
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: High CDN bandwidth usage
+          description: "CDN bandwidth usage is above 1GB/s for content type {{ $labels.type }}"
+
+      - alert: SlowCDNOperations
+        expr: |
+          histogram_quantile(0.95, sum(rate(cdn_operation_duration_seconds_bucket[5m])) by (operation, le))
+          > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Slow CDN operations
+          description: "95th percentile of CDN operation duration is above 5s for operation {{ $labels.operation }}"
+
+      - alert: FrequentCDNInvalidations
+        expr: |
+          sum(rate(cdn_invalidations_total[5m])) by (count)
+          > 10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Frequent CDN invalidations
+          description: "CDN invalidation rate is above 10 per minute"
+
+      - alert: HighCDN4xxErrorRate
+        expr: |
+          sum(rate(cdn_requests_total{status=~"4.."}[5m])) by (type)
+          /
+          sum(rate(cdn_requests_total[5m])) by (type)
+          > 0.05
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: High CDN 4xx error rate
+          description: "CDN 4xx error rate is above 5% for content type {{ $labels.type }}"
+
+      - alert: HighCDN5xxErrorRate
+        expr: |
+          sum(rate(cdn_requests_total{status=~"5.."}[5m])) by (type)
+          /
+          sum(rate(cdn_requests_total[5m])) by (type)
+          > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: High CDN 5xx error rate
+          description: "CDN 5xx error rate is above 1% for content type {{ $labels.type }}" 

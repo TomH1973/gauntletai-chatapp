@@ -1,6 +1,22 @@
 # Chat Application
 
-A real-time chat application built with Next.js, Socket.IO, and PostgreSQL.
+A real-time chat application built with Next.js, WebSocket, and TypeScript.
+
+## Documentation Structure
+
+### Core Documentation
+- [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) - System design, API, and implementation details
+- [`CHECKLIST.md`](docs/CHECKLIST.md) - Project status and implementation progress
+- [`SECURITY.md`](docs/SECURITY.md) - Security architecture and implementation
+- [`DEPLOYMENT.md`](docs/DEPLOYMENT.md) - Deployment and infrastructure guides
+- [`TESTING.md`](docs/TESTING.md) - Testing strategy and procedures
+
+### Additional Resources
+- [`guides/`](docs/guides/) - Specific implementation guides
+- [`diagrams/`](docs/diagrams/) - System architecture diagrams
+- [`api/`](docs/api/) - API documentation
+
+> Note: Some older documentation files have been deprecated and consolidated into the above structure. Look for the new unified documents.
 
 ## Quick Start
 

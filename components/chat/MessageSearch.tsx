@@ -1,11 +1,15 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { useQuery, useQueryClient, UseQueryOptions } from '@tanstack/react-query';
-import { Search, Loader2 } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Search, Loader2, XCircle, AlertCircle } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { useHotkeys } from '@/hooks/useHotkeys';
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Message {
   id: string;
@@ -37,146 +41,164 @@ interface SearchResponse {
 interface MessageSearchProps {
   threadId?: string;
   onMessageSelect?: (messageId: string) => void;
+  onClose?: () => void;
 }
 
-export function MessageSearch({ threadId, onMessageSelect }: MessageSearchProps) {
-  const [searchQuery, setSearchQuery] = useState('');
+export function MessageSearch({ threadId, onMessageSelect, onClose }: MessageSearchProps) {
+  const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
-  const debouncedQuery = useDebounce(searchQuery, 300);
+  const debouncedQuery = useDebounce(query, 300);
+  const inputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
-  const queryOptions: UseQueryOptions<SearchResponse, Error> = {
-    queryKey: ['messageSearch', debouncedQuery, threadId, page],
+  // Keyboard shortcuts
+  useHotkeys('esc', () => {
+    onClose?.();
+  });
+
+  useHotkeys('cmd+k', (e) => {
+    e.preventDefault();
+    inputRef.current?.focus();
+  });
+
+  // Focus input on mount
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const { data, isLoading, isError, error } = useQuery<SearchResponse>({
+    queryKey: ['messageSearch', debouncedQuery, page, threadId],
     queryFn: async () => {
-      if (!debouncedQuery) {
-        return {
-          messages: [],
-          pagination: { total: 0, pages: 0, page: 1, limit: 20 }
-        } as SearchResponse;
-      }
-      
+      if (!debouncedQuery) return { messages: [], pagination: { total: 0, pages: 0, page: 1, limit: 10 } };
       const params = new URLSearchParams({
         q: debouncedQuery,
         page: page.toString(),
-        ...(threadId && { threadId })
+        ...(threadId && { threadId }),
       });
-
       const response = await fetch(`/api/messages/search?${params}`);
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.message || 'Search failed');
-      }
-      const data: SearchResponse = await response.json();
-      return data;
+      if (!response.ok) throw new Error('Search failed');
+      return response.json();
     },
     enabled: Boolean(debouncedQuery),
-    staleTime: 30000,
-    gcTime: 5 * 60 * 1000,
-    placeholderData: (previousData) => previousData,
-    retry: (failureCount, error) => {
-      if (error instanceof Error && 'status' in error && (error as any).status < 500) {
-        return false;
-      }
-      return failureCount < 2;
+  });
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && data?.messages[0]) {
+      onMessageSelect?.(data.messages[0].id);
     }
   };
 
-  const { data, isLoading, error, isFetching } = useQuery<SearchResponse, Error>(queryOptions);
-
-  // Prefetch next page
-  const prefetchNextPage = useCallback(() => {
-    if (data?.pagination && data.pagination.page < data.pagination.pages) {
-      const nextPage = page + 1;
-      const nextPageOptions: UseQueryOptions<SearchResponse, Error> = {
-        ...queryOptions,
-        queryKey: ['messageSearch', debouncedQuery, threadId, nextPage]
-      };
-      queryClient.prefetchQuery(nextPageOptions);
-    }
-  }, [data, debouncedQuery, page, queryClient, threadId, queryOptions]);
-
-  const handleSearchInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    setPage(1);
-  }, []);
-
-  const handleLoadMore = useCallback(() => {
-    if (data?.pagination && data.pagination.page < data.pagination.pages) {
-      setPage(prev => prev + 1);
-      prefetchNextPage();
-    }
-  }, [data, prefetchNextPage]);
-
   return (
-    <div className="flex flex-col w-full max-w-md">
-      <div className="relative">
+    <div className="flex flex-col h-full max-h-[600px] w-full max-w-lg bg-background border rounded-lg shadow-lg">
+      <div className="flex items-center gap-2 p-4 border-b">
+        <Search className="w-5 h-5 text-muted-foreground" />
         <input
+          ref={inputRef}
           type="text"
-          value={searchQuery}
-          onChange={handleSearchInput}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Search messages..."
-          className="w-full px-4 py-2 pl-10 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 bg-transparent border-none outline-none placeholder:text-muted-foreground"
         />
-        <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+        {query && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setQuery('')}
+            className="h-5 w-5 p-0"
+          >
+            <XCircle className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
-      {(isLoading || isFetching) && (
-        <div className="flex justify-center p-4">
-          <Loader2 className="w-6 h-6 animate-spin" />
-        </div>
-      )}
-
-      {error instanceof Error && (
-        <div className="p-4 text-red-500 text-center">
-          {error.message || 'Failed to search messages'}
-        </div>
-      )}
-
-      {data?.messages && (
-        <div className="mt-4 space-y-2">
-          {data.messages.map((message) => (
-            <button
-              key={message.id}
-              onClick={() => onMessageSelect?.(message.id)}
-              className={cn(
-                'w-full p-3 text-left rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800',
-                'transition-colors duration-200'
-              )}
-            >
-              <div className="flex items-center gap-2">
-                <img
-                  src={message.user?.image || '/default-avatar.png'}
-                  alt={message.user?.name}
-                  className="w-6 h-6 rounded-full"
-                />
-                <span className="font-medium">{message.user?.name}</span>
-                <span className="text-sm text-gray-500">
-                  {formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })}
-                </span>
-                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full ml-auto">
-                  {Math.round(message.rank * 100)}% match
-                </span>
+      <ScrollArea className="flex-1 p-2">
+        {isLoading ? (
+          <div className="space-y-4 p-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <Skeleton className="h-10 w-10 rounded-full" />
+                <div className="space-y-2 flex-1">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-4 w-full" />
+                </div>
               </div>
-              <div 
-                className="mt-1 text-sm line-clamp-3"
-                dangerouslySetInnerHTML={{ __html: message.highlight }}
-              />
-              {!threadId && message.thread && (
-                <p className="mt-1 text-xs text-gray-500">
-                  in {message.thread.name}
-                </p>
-              )}
-            </button>
-          ))}
-
-          {data.pagination.page < data.pagination.pages && (
-            <button
-              onClick={handleLoadMore}
-              className="w-full py-2 text-sm text-blue-500 hover:text-blue-600"
+            ))}
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+            <AlertCircle className="h-8 w-8 text-destructive mb-2" />
+            <p className="text-sm text-muted-foreground mb-4">
+              {error instanceof Error ? error.message : 'Failed to search messages'}
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['messageSearch'] })}
+              className="mt-2"
             >
-              Load more results
-            </button>
-          )}
+              Try again
+            </Button>
+          </div>
+        ) : data?.messages.length === 0 && query ? (
+          <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+            <p className="text-sm text-muted-foreground">No messages found</p>
+          </div>
+        ) : (
+          <div className="space-y-4 p-2">
+            {data?.messages.map((message) => (
+              <button
+                key={message.id}
+                onClick={() => onMessageSelect?.(message.id)}
+                className={cn(
+                  'flex items-start gap-2 w-full p-2 rounded-lg text-left hover:bg-muted/50 transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+                )}
+              >
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-medium text-sm">{message.user.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground line-clamp-2"
+                    dangerouslySetInnerHTML={{ __html: message.highlight }}
+                  />
+                  {message.thread && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      in {message.thread.name}
+                    </p>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+
+      {data?.pagination.pages > 1 && (
+        <div className="flex justify-center items-center gap-2 p-2 border-t">
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={page === 1}
+            onClick={() => setPage(p => p - 1)}
+          >
+            Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {page} of {data.pagination.pages}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={page === data.pagination.pages}
+            onClick={() => setPage(p => p + 1)}
+          >
+            Next
+          </Button>
         </div>
       )}
     </div>
