@@ -51,6 +51,8 @@
   },
   "devDependencies": {
     "@types/socket.io-client": "^1.4.36",
+    "@typescript-eslint/eslint-plugin": "^5.62.0",
+    "@typescript-eslint/parser": "^5.62.0",
     "autoprefixer": "^10.4.13",
     "concurrently": "^8.0.1",
     "cross-env": "^7.0.3",
