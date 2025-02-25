@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: chatapp
     ports:
-      - "5432:5432"
+      - "5432:5432" 
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -22,6 +22,9 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3001:3001"
+    volumes:
+      - ./server:/app
+      - /app/node_modules
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/chatapp
       - JWT_SECRET=your-secret-key-change-in-production
@@ -30,6 +33,22 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    command: npm run dev
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://localhost:3001
+    depends_on:
+      - server
+    command: npm start
 
 volumes:
   postgres_data: 

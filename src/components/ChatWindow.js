@@ -3,10 +3,11 @@ import axios from 'axios';
 import io from 'socket.io-client';
 import { format } from 'date-fns';
 
-const ChatWindow = ({ onLogout }) => {
+const ChatWindow = ({ onLogout, user }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [error, setError] = useState('');
+  const [isConnected, setIsConnected] = useState(false);
   const messagesEndRef = useRef(null);
   const socketRef = useRef();
 
@@ -18,12 +19,13 @@ const ChatWindow = ({ onLogout }) => {
     // Fetch message history
     const fetchMessages = async () => {
       try {
-        const response = await axios.get('/api/messages', {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-        setMessages(response.data);
+        const response = await axios.get('/api/messages');
+        
+        if (response.data.status === 'success') {
+          setMessages(response.data.data);
+        } else {
+          throw new Error('Failed to fetch messages');
+        }
       } catch (error) {
         setError('Error fetching message history');
         console.error('Error fetching messages:', error);
@@ -31,14 +33,17 @@ const ChatWindow = ({ onLogout }) => {
     };
 
     // Connect to Socket.IO
+    const session = JSON.parse(localStorage.getItem('session') || '{}');
     socketRef.current = io(process.env.REACT_APP_API_URL || 'http://localhost:3001', {
       auth: {
-        token: localStorage.getItem('token')
+        token: session.token
       }
     });
 
     socketRef.current.on('connect', () => {
       console.log('Connected to Socket.IO');
+      setIsConnected(true);
+      setError('');
     });
 
     socketRef.current.on('message', (message) => {
@@ -51,7 +56,13 @@ const ChatWindow = ({ onLogout }) => {
 
     socketRef.current.on('connect_error', (error) => {
       setError('Connection error. Please try again.');
+      setIsConnected(false);
       console.error('Socket connection error:', error);
+    });
+
+    socketRef.current.on('disconnect', () => {
+      setIsConnected(false);
+      setError('Disconnected from server');
     });
 
     fetchMessages();
@@ -68,16 +79,21 @@ const ChatWindow = ({ onLogout }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
+    if (!isConnected) {
+      setError('Not connected to server. Please try again.');
+      return;
+    }
 
-    socketRef.current.emit('message', { text: newMessage });
+    socketRef.current.emit('message', newMessage);
     setNewMessage('');
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('userId');
-    localStorage.removeItem('username');
-    onLogout();
+  const formatTime = (timestamp) => {
+    try {
+      return format(new Date(timestamp), 'HH:mm');
+    } catch (error) {
+      return '';
+    }
   };
 
   return (
@@ -85,44 +101,61 @@ const ChatWindow = ({ onLogout }) => {
       {/* Header */}
       <div className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-          <h1 className="text-xl font-semibold text-gray-800">
-            Chat App
-          </h1>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 text-sm text-red-600 hover:text-red-700"
-          >
-            Logout
-          </button>
+          <div className="flex items-center">
+            <h1 className="text-xl font-semibold text-gray-800">
+              Chat App
+            </h1>
+            <div className="ml-3 text-sm">
+              <span className={`inline-block w-2 h-2 rounded-full mr-1 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+              {isConnected ? 'Connected' : 'Disconnected'}
+            </div>
+          </div>
+          <div className="flex items-center">
+            <span className="mr-4 text-sm text-gray-600">
+              Signed in as <span className="font-medium">{user.username}</span>
+            </span>
+            <button
+              onClick={onLogout}
+              className="px-4 py-2 text-sm text-red-600 hover:text-red-700"
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Chat container */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`flex ${
-              message.aiGenerated ? 'justify-start' : 'justify-end'
-            }`}
-          >
+        {messages.length === 0 ? (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-gray-500">No messages yet. Say hello!</p>
+          </div>
+        ) : (
+          messages.map((message, index) => (
             <div
-              className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                message.aiGenerated
-                  ? 'bg-gray-200 text-gray-800'
-                  : 'bg-blue-600 text-white'
+              key={index}
+              className={`flex ${
+                message.isAI ? 'justify-start' : 'justify-end'
               }`}
             >
-              <div className="font-medium text-xs mb-1">
-                {message.userId.username}
-                <span className="ml-2 text-opacity-75">
-                  {format(new Date(message.timestamp), 'HH:mm')}
-                </span>
+              <div
+                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                  message.isAI
+                    ? 'bg-gray-200 text-gray-800'
+                    : 'bg-blue-600 text-white'
+                }`}
+              >
+                <div className="font-medium text-xs mb-1">
+                  {message.user?.username || 'Unknown'}
+                  <span className="ml-2 text-opacity-75">
+                    {formatTime(message.createdAt)}
+                  </span>
+                </div>
+                <div className="break-words">{message.text}</div>
               </div>
-              <div className="break-words">{message.text}</div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -148,7 +181,7 @@ const ChatWindow = ({ onLogout }) => {
           />
           <button
             type="submit"
-            disabled={!newMessage.trim()}
+            disabled={!newMessage.trim() || !isConnected}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
           >
             Send

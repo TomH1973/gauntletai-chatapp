@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
+const prisma = require('../lib/prisma');
 
-const authenticateToken = (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -9,7 +10,16 @@ const authenticateToken = (req, res, next) => {
   }
 
   try {
-    const user = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true, username: true }
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+
     req.user = user;
     next();
   } catch (error) {
@@ -18,7 +28,7 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
-const authenticateSocket = (socket, next) => {
+const authenticateSocket = async (socket, next) => {
   const token = socket.handshake.auth.token;
 
   if (!token) {
@@ -26,7 +36,16 @@ const authenticateSocket = (socket, next) => {
   }
 
   try {
-    const user = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true, username: true }
+    });
+
+    if (!user) {
+      return next(new Error('User not found'));
+    }
+
     socket.user = user;
     next();
   } catch (error) {

@@ -1,46 +1,54 @@
-const Message = require('../models/Message');
+const prisma = require('../lib/prisma');
 const { handleAIResponse } = require('../services/ai');
 
-const setupChatHandlers = (io) => {
+function setupChatHandlers(io) {
   io.on('connection', (socket) => {
-    console.log(`User connected: ${socket.user.username}`);
+    console.log('User connected:', socket.user.username);
 
-    socket.on('message', async (data) => {
+    socket.on('message', async (messageText) => {
       try {
-        // Save user message
-        const userMessage = new Message({
-          text: data.text,
-          userId: socket.user.userId,
-          aiGenerated: false
+        // Save and broadcast user message
+        const message = await prisma.message.create({
+          data: {
+            text: messageText,
+            userId: socket.user.id,
+            isAI: false
+          },
+          include: {
+            user: {
+              select: { username: true }
+            }
+          }
         });
-        await userMessage.save();
-        await userMessage.populate('userId', 'username');
-
-        // Broadcast to all clients
-        io.emit('message', userMessage);
+        io.emit('message', message);
 
         // Generate and save AI response
-        const aiResponse = await handleAIResponse(data.text);
-        const aiMessage = new Message({
-          text: aiResponse,
-          userId: socket.user.userId, // We're using the same user ID for simplicity
-          aiGenerated: true
-        });
-        await aiMessage.save();
-        await aiMessage.populate('userId', 'username');
-
-        // Broadcast AI response
-        io.emit('message', aiMessage);
+        const aiResponse = await handleAIResponse(messageText);
+        if (aiResponse) {
+          const aiMessage = await prisma.message.create({
+            data: {
+              text: aiResponse,
+              userId: socket.user.id,
+              isAI: true
+            },
+            include: {
+              user: {
+                select: { username: true }
+              }
+            }
+          });
+          io.emit('message', aiMessage);
+        }
       } catch (error) {
-        console.error('Error handling message:', error);
+        console.error('Error processing message:', error);
         socket.emit('error', { message: 'Error processing message' });
       }
     });
 
     socket.on('disconnect', () => {
-      console.log(`User disconnected: ${socket.user.username}`);
+      console.log('User disconnected:', socket.user.username);
     });
   });
-};
+}
 
 module.exports = setupChatHandlers; 

@@ -1,6 +1,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const prisma = require('../lib/prisma');
 const { AppError, catchAsync } = require('../services/error');
 const router = express.Router();
 
@@ -8,33 +9,33 @@ const router = express.Router();
 router.post('/register', catchAsync(async (req, res) => {
   const { username, email, password } = req.body;
   
-  // Check if user already exists
-  const existingUser = await User.findOne({ 
-    $or: [{ email }, { username }] 
+  // Check if user exists
+  const existingUser = await prisma.user.findFirst({
+    where: { OR: [{ email }, { username }] }
   });
   
   if (existingUser) {
     throw new AppError('Username or email already exists', 400);
   }
 
-  // Create new user
-  const user = new User({ username, email, password });
-  await user.save();
+  // Create user
+  const user = await prisma.user.create({
+    data: {
+      username,
+      email,
+      password: await bcrypt.hash(password, 10)
+    }
+  });
 
-  // Generate JWT
   const token = jwt.sign(
-    { userId: user._id, username: user.username },
+    { userId: user.id, username },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRY || '24h' }
   );
 
   res.status(201).json({ 
     status: 'success',
-    data: {
-      token,
-      userId: user._id,
-      username
-    }
+    data: { token, userId: user.id, username }
   });
 }));
 
@@ -42,32 +43,20 @@ router.post('/register', catchAsync(async (req, res) => {
 router.post('/login', catchAsync(async (req, res) => {
   const { username, password } = req.body;
   
-  // Find user
-  const user = await User.findOne({ username });
-  if (!user) {
+  const user = await prisma.user.findUnique({ where: { username } });
+  if (!user || !(await bcrypt.compare(password, user.password))) {
     throw new AppError('Invalid credentials', 401);
   }
 
-  // Check password
-  const isMatch = await user.comparePassword(password);
-  if (!isMatch) {
-    throw new AppError('Invalid credentials', 401);
-  }
-
-  // Generate JWT
   const token = jwt.sign(
-    { userId: user._id, username: user.username },
+    { userId: user.id, username },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRY || '24h' }
   );
 
   res.json({
     status: 'success',
-    data: {
-      token,
-      userId: user._id,
-      username
-    }
+    data: { token, userId: user.id, username }
   });
 }));
 

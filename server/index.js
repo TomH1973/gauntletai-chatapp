@@ -1,14 +1,16 @@
-require('dotenv').config();
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
+const prisma = require('./lib/prisma');
 const authRoutes = require('./routes/auth');
 const messageRoutes = require('./routes/messages');
 const { authenticateSocket } = require('./middleware/auth');
 const setupChatHandlers = require('./sockets/chat');
 const { handleError } = require('./services/error');
+
+// Load environment variables from .env file if it exists
+require('dotenv').config();
 
 const app = express();
 const httpServer = createServer(app);
@@ -26,26 +28,17 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// MongoDB connection
-mongoose.connect('mongodb://127.0.0.1:27017/chatapp', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 5000,
-  family: 4
-}).then(() => {
-  console.log('Connected to MongoDB');
-}).catch((error) => {
-  console.error('MongoDB connection error:', error);
-  process.exit(1); // Exit if MongoDB connection fails
-});
-
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/messages', messageRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ 
+    status: 'ok',
+    database: 'connected',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Socket.IO middleware
@@ -58,12 +51,36 @@ setupChatHandlers(io);
 app.use(handleError);
 
 // Handle unhandled routes
-app.all('*', (req, res, next) => {
+app.all('*', (req, res) => {
   res.status(404).json({
     status: 'error',
     message: `Can't find ${req.originalUrl} on this server!`
   });
 });
+
+// Graceful shutdown
+const gracefulShutdown = async () => {
+  console.log('Shutting down gracefully...');
+  
+  // Close database connection
+  await prisma.$disconnect();
+  
+  // Close HTTP server
+  httpServer.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
+  
+  // Force exit after 10s if server hangs
+  setTimeout(() => {
+    console.error('Could not close connections in time, forcing shutdown');
+    process.exit(1);
+  }, 10000);
+};
+
+// Handle termination signals
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
@@ -76,9 +93,7 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (err) => {
   console.error('UNHANDLED REJECTION! 💥 Shutting down...');
   console.error(err.name, err.message, err.stack);
-  httpServer.close(() => {
-    process.exit(1);
-  });
+  gracefulShutdown();
 });
 
 const PORT = process.env.PORT || 3001;

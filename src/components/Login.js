@@ -9,23 +9,46 @@ const Login = ({ onLogin }) => {
     password: ''
   });
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
 
     try {
       const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
       const response = await axios.post(endpoint, formData);
       
-      // Store token and user info
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('userId', response.data.userId);
-      localStorage.setItem('username', response.data.username);
-      
-      onLogin(response.data);
+      if (response.data.status === 'success' && response.data.data) {
+        const { token, userId, username } = response.data.data;
+        
+        // Store session data
+        const sessionData = {
+          token,
+          user: {
+            id: userId,
+            username,
+            email: formData.email || ''
+          },
+          lastActivity: Date.now()
+        };
+        
+        localStorage.setItem('session', JSON.stringify(sessionData));
+        localStorage.setItem('lastActivity', Date.now().toString());
+        
+        onLogin(sessionData);
+      } else {
+        throw new Error('Invalid response format');
+      }
     } catch (error) {
-      setError(error.response?.data?.error || 'An error occurred');
+      const message = error.response?.data?.message || 
+                     error.response?.data?.error || 
+                     error.message || 
+                     'An error occurred';
+      setError(message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -55,6 +78,7 @@ const Login = ({ onLogin }) => {
                 placeholder="Username"
                 value={formData.username}
                 onChange={handleChange}
+                disabled={isLoading}
               />
             </div>
             {isRegister && (
@@ -67,6 +91,7 @@ const Login = ({ onLogin }) => {
                   placeholder="Email address"
                   value={formData.email}
                   onChange={handleChange}
+                  disabled={isLoading}
                 />
               </div>
             )}
@@ -79,6 +104,7 @@ const Login = ({ onLogin }) => {
                 placeholder="Password"
                 value={formData.password}
                 onChange={handleChange}
+                disabled={isLoading}
               />
             </div>
           </div>
@@ -90,9 +116,20 @@ const Login = ({ onLogin }) => {
           <div>
             <button
               type="submit"
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              disabled={isLoading}
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
-              {isRegister ? 'Register' : 'Sign in'}
+              {isLoading ? (
+                <span className="inline-flex items-center">
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  {isRegister ? 'Registering...' : 'Signing in...'}
+                </span>
+              ) : (
+                isRegister ? 'Register' : 'Sign in'
+              )}
             </button>
           </div>
         </form>
@@ -102,6 +139,7 @@ const Login = ({ onLogin }) => {
             type="button"
             className="text-sm text-blue-600 hover:text-blue-500"
             onClick={() => setIsRegister(!isRegister)}
+            disabled={isLoading}
           >
             {isRegister
               ? 'Already have an account? Sign in'
