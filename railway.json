@@ -1,0 +1,40 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "watchPatterns": [
+      "server/**",
+      "src/**",
+      "prisma/**"
+    ],
+    "buildCommand": "npm run build"
+  },
+  "deploy": {
+    "startCommand": "npm start",
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 100,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10,
+    "healthcheckPlatformType": "WEB"
+  },
+  "plugins": {
+    "postgresql": {
+      "version": "16",
+      "plan": "free"
+    },
+    "redis": {
+      "version": "7",
+      "plan": "free"
+    }
+  },
+  "environments": [
+    {
+      "name": "production",
+      "plugins": ["postgresql", "redis"]
+    },
+    {
+      "name": "staging",
+      "plugins": ["postgresql", "redis"]
+    }
+  ]
+}

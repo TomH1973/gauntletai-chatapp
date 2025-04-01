@@ -5,13 +5,17 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js",
+    "dev": "nodemon --config nodemon.json index.js",
+    "hot": "NODE_ENV=development nodemon --config nodemon.json --legacy-watch index.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "wsl:start": "bash ./start-wsl.sh",
-    "wsl:dev": "nodemon index.js",
+    "wsl:dev": "NODE_ENV=development nodemon --config nodemon.json --legacy-watch index.js",
     "wsl:migrate": "npx prisma migrate dev",
-    "wsl:generate": "npx prisma generate"
+    "wsl:generate": "npx prisma generate",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",
@@ -24,7 +28,16 @@
     "socket.io": "^4.6.1"
   },
   "devDependencies": {
+    "jest": "^29.7.0",
     "nodemon": "^2.0.22",
-    "prisma": "^5.10.0"
+    "prisma": "^5.10.0",
+    "supertest": "^6.3.3"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coveragePathIgnorePatterns": [
+      "/node_modules/"
+    ],
+    "setupFilesAfterEnv": ["<rootDir>/tests/setup.js"]
   }
 } 

@@ -1,6 +1,6 @@
 # Chat App with AI Integration
 
-A real-time chat application featuring AI responses, JWT authentication, and PostgreSQL persistence.
+A real-time chat application featuring JWT authentication, PostgreSQL persistence, and WebSocket communication.
 
 ![Chat Application Screenshot](https://via.placeholder.com/800x450.png?text=Chat+App+Screenshot)
 
@@ -8,49 +8,21 @@ A real-time chat application featuring AI responses, JWT authentication, and Pos
 
 - **User Authentication**: Secure login and registration with JWT
 - **Real-time Messaging**: Instant communication using Socket.IO
-- **AI Responses**: Automatic AI-generated replies to user messages
 - **Database Persistence**: Message history saved in PostgreSQL using Prisma ORM
-- **Modern UI**: Clean, responsive interface built with React and Tailwind CSS
+- **Modern UI**: Clean, responsive interface built with React
+- **Deployment Ready**: Configured for Railway and AWS deployment paths
 
-## Table of Contents
+## Development Setup
 
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Detailed Setup](#detailed-setup)
-  - [Environment Setup](#environment-setup)
-  - [Database Configuration](#database-configuration)
-  - [Application Installation](#application-installation)
-- [Running the Application](#running-the-application)
-- [Project Structure](#project-structure)
-- [API Documentation](#api-documentation)
-- [WebSocket Events](#websocket-events)
-- [Database Schema](#database-schema)
-- [AI Integration](#ai-integration)
-- [Troubleshooting](#troubleshooting)
-- [Development Guide](#development-guide)
-- [License](#license)
+### Prerequisites
 
-## Prerequisites
-
-- **Node.js**: v14 or later
-- **PostgreSQL**: v12 or later
+- **Node.js**: v18 or later
+- **PostgreSQL**: v16 or later
+- **Redis**: v7 or later
 - **Windows Subsystem for Linux (WSL2)**: For development on Windows
-- **Docker** (optional): For containerized setup
+- **Docker**: For containerized setup
 
-## Quick Start
-
-For Windows users, we provide a simple launcher script to get started quickly:
-
-```bash
-# Just run the batch file and follow the prompts
-start-app.bat
-```
-
-This launcher will guide you through setting up and running the application in WSL.
-
-## Detailed Setup
-
-### Environment Setup
+### Quick Start (WSL)
 
 1. **Clone the repository**:
    ```bash
@@ -58,91 +30,91 @@ This launcher will guide you through setting up and running the application in W
    cd chatapp
    ```
 
-2. **Install WSL2 (Windows users)**:
-   If not already installed, run in an administrator PowerShell:
-   ```powershell
-   wsl --install
-   ```
-   After installation, restart your computer.
-
-3. **Run the setup script**:
+2. **Start with Docker Compose** (recommended):
    ```bash
-   # Windows users
-   start-app.bat
-   # Then select option 6 to run the setup script
-   
-   # Linux/WSL users
-   chmod +x wsl-setup.sh
-   ./wsl-setup.sh
+   # Build and start all services with hot-reloading
+   npm run wsl:docker:build
+   npm run wsl:docker:dev
    ```
+   This will start the entire stack with hot-reloading enabled. Any changes to the server or client code will be automatically reflected without needing to restart.
 
-### Database Configuration
-
-1. **Start PostgreSQL**:
+3. **Manual Setup**:
    ```bash
-   # Using Docker (recommended)
-   npm run wsl:docker:db
-   
-   # Or run a standalone PostgreSQL instance
-   docker run -d -p 5432:5432 --name chatapp-postgres \
-     -e POSTGRES_PASSWORD=postgres \
-     -e POSTGRES_USER=postgres \
-     -e POSTGRES_DB=chatapp \
-     postgres:latest
-   ```
-
-2. **Update database connection**:
-   Edit `server/.env` to match your PostgreSQL configuration:
-   ```
-   DATABASE_URL="postgresql://postgres:postgres@localhost:5432/chatapp"
-   ```
-   
-   *Note for WSL users*: If connecting to a Windows PostgreSQL instance, try:
-   ```
-   DATABASE_URL="postgresql://postgres:postgres@host.docker.internal:5432/chatapp"
-   ```
-
-3. **Initialize the database**:
-   ```bash
-   npm run wsl:db:migrate
-   ```
-
-### Application Installation
-
-1. **Install dependencies**:
-   ```bash
-   # For both client and server
+   # Install dependencies
    npm install
+   cd server && npm install && cd ..
+
+   # Start PostgreSQL and Redis services
+   npm run wsl:docker:db
+   npm run wsl:docker:redis
+
+   # In a new terminal, run the application with hot-reloading
+   npm run wsl:dev
+   ```
+
+### Development Workflow
+
+For the best development experience with hot-reloading:
+
+1. **Environment Setup**:
+   - Create a `.env` file by copying `.env.example`
+   - Add the `.env.hot-reload` variables to your environment if needed
    
-   # Server only
-   cd server && npm install
-   ```
+2. **Start Development Servers**:
+   - Use `npm run wsl:dev` for the standard WSL development with hot-reloading
+   - For Docker-based development, use `npm run wsl:docker:dev`
+   
+3. **Hot-Reloading**:
+   - Client-side code changes will instantly refresh in the browser
+   - Server-side changes will automatically restart the server
+   - File watching is optimized for WSL
 
-2. **Generate Prisma client**:
+4. **Database Changes**:
+   - After modifying the Prisma schema, run `npm run wsl:db:migrate`
+   - Access the database UI with `npm run db:studio`
+
+### Environment Setup
+
+1. **Create a .env file**:
    ```bash
-   npm run wsl:db:generate
+   cp .env.example .env
    ```
 
-## Running the Application
+2. **Configure environment variables**:
+   Edit the .env file with your specific settings for database, Redis, etc.
 
-### Using the Windows Launcher (Recommended for Windows users)
+### Accessing the Application
+
+- **Web Client**: http://localhost:3000
+- **API Server**: http://localhost:3001
+- **WebSocket Server**: ws://localhost:4000
+- **Database UI**: http://localhost:5555 (after running `npm run db:studio`)
+
+## Development Commands
+
+### Docker Compose (Recommended)
 
 ```bash
-start-app.bat
+# Start all services
+npm run wsl:docker:dev
+
+# Start database only
+npm run wsl:docker:db
+
+# Start redis only
+npm run wsl:docker:redis
+
+# Rebuild containers
+npm run wsl:docker:build
+
+# Stop all services
+npm run wsl:docker:down
 ```
 
-Then select the option you want:
-1. Start development environment (server + client)
-2. Start server only
-3. Start client only
-4. Start PostgreSQL database only
-5. Start Docker Compose environment
-6. Run setup script
-
-### Using npm scripts (All platforms)
+### Manual Development
 
 ```bash
-# Start both server and client
+# Start both client and server
 npm run wsl:dev
 
 # Start server only
@@ -151,193 +123,88 @@ npm run wsl:server
 # Start client only
 npm run wsl:client
 
-# Using Docker Compose (full environment)
-npm run wsl:docker:up
+# Database commands
+npm run wsl:db:migrate  # Apply migrations
+npm run wsl:db:generate # Generate Prisma client
+npm run db:studio       # Launch Prisma Studio UI
 ```
 
-### Accessing the Application
+### Testing
 
-- **Web Client**: http://localhost:3000
-- **API Server**: http://localhost:3001
-- **API Health Check**: http://localhost:3001/health
+```bash
+# Run client tests
+npm test
+
+# Run specific client test
+npm test -- -t "test name pattern"
+
+# Run server tests
+cd server && npm test
+
+# Run specific server test
+cd server && npm test -- -t "test name pattern"
+```
+
+### Cleanup Commands
+
+```bash
+# Clean node_modules
+npm run clean:dev
+
+# Remove redundant code directory
+npm run clean:chatappmvp
+```
+
+## Deployment
+
+### Railway Deployment (Free Tier)
+
+1. **Initialize and Configure Railway**:
+   ```bash
+   # Install Railway CLI and log in
+   npm i -g @railway/cli
+   railway login
+   
+   # Initialize Railway project
+   npm run deploy:railway:setup
+   ```
+
+2. **Deploy**:
+   ```bash
+   npm run deploy:railway
+   ```
+
+### AWS Deployment (Production)
+
+See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed AWS ECS/Fargate deployment instructions.
 
 ## Project Structure
 
 ```
 chatapp/
-├── server/                    # Backend server code
-│   ├── index.js               # Server entry point
-│   ├── routes/                # API routes
-│   ├── middleware/            # Authentication middleware
-│   ├── services/              # Business logic
-│   ├── sockets/               # WebSocket handlers
-│   ├── lib/                   # Shared utilities
-│   └── prisma/                # Database schema and migrations
-├── src/                       # Frontend React code
-│   ├── components/            # React components
-│   ├── hooks/                 # Custom React hooks
-│   ├── lib/                   # Utilities and helpers
-│   └── types/                 # TypeScript type definitions
-├── public/                    # Static assets
-├── docker-compose.wsl.yml     # Docker configuration
-├── start-app.bat              # Windows launcher script
-└── wsl-setup.sh               # WSL setup script
+├── server/                   # Backend server code
+│   ├── index.js              # Server entry point
+│   ├── routes/               # API routes
+│   ├── middleware/           # Authentication middleware 
+│   ├── services/             # Business logic
+│   ├── sockets/              # WebSocket handlers
+│   └── prisma/               # Database schema and migrations
+├── src/                      # Frontend React code
+│   ├── components/           # React components
+│   ├── hooks/                # Custom React hooks 
+│   ├── lib/                  # Utilities and helpers
+│   └── types/                # TypeScript type definitions
+├── docker-compose.wsl.yml    # Docker configuration
+├── railway.json              # Railway deployment config
+└── ROADMAP.md                # Project roadmap and cleanup plan
 ```
 
-## API Documentation
+## Documentation
 
-### Authentication Endpoints
-
-- **Register User**
-  - URL: `POST /api/auth/register`
-  - Body: `{ "username": "string", "email": "string", "password": "string" }`
-  - Response: `{ "status": "success", "data": { "token": "string", "userId": "string", "username": "string" } }`
-
-- **Login User**
-  - URL: `POST /api/auth/login`
-  - Body: `{ "username": "string", "password": "string" }`
-  - Response: `{ "status": "success", "data": { "token": "string", "userId": "string", "username": "string" } }`
-
-### Messages Endpoints
-
-- **Get Recent Messages**
-  - URL: `GET /api/messages`
-  - Headers: `Authorization: Bearer <token>`
-  - Response: `{ "status": "success", "data": [Message] }`
-
-- **Create New Message**
-  - URL: `POST /api/messages`
-  - Headers: `Authorization: Bearer <token>`
-  - Body: `{ "text": "string" }`
-  - Response: `{ "status": "success", "data": Message }`
-
-## WebSocket Events
-
-- **Authentication**
-  - Connect with auth token: `io('http://localhost:3001', { auth: { token: 'your-jwt-token' } })`
-
-- **Sending Messages**
-  - Event: `message`
-  - Data: `"Your message text"`
-
-- **Receiving Messages**
-  - Event: `message`
-  - Data: `{ id: string, text: string, userId: string, user: { username: string }, createdAt: string, isAI: boolean }`
-
-- **Error Handling**
-  - Event: `error`
-  - Data: `{ message: string }`
-
-## Database Schema
-
-### User Model
-```prisma
-model User {
-  id        String    @id @default(uuid())
-  username  String    @unique
-  email     String    @unique
-  password  String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  messages  Message[]
-}
-```
-
-### Message Model
-```prisma
-model Message {
-  id        String   @id @default(uuid())
-  text      String
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  createdAt DateTime @default(now())
-  isAI      Boolean  @default(false)
-
-  @@index([createdAt(sort: Desc)])
-}
-```
-
-## AI Integration
-
-The application features a simple AI integration that automatically responds to user messages:
-
-1. When a user sends a message, it's stored in the database and broadcast to all connected clients.
-2. The server then generates an AI response using the `handleAIResponse` service.
-3. The AI response is also stored in the database and broadcast to all clients.
-
-Currently, the AI implementation is a simple echo service that prefixes the original message with "AI:". For production, this can be replaced with:
-- OpenAI's GPT API
-- Hugging Face models
-- Custom ML models
-
-To customize the AI integration, modify the `server/services/ai.js` file.
+- [API Documentation](docs/api/README.md)
+- [WebSocket Events](docs/api/WEBSOCKET.md)
+- [Database Schema](docs/database/schema.md)
 
 ## Troubleshooting
 
-### Database Connection Issues
-
-**PostgreSQL connection failing in WSL**:
-1. Check if PostgreSQL is running: `docker ps` or `pg_isready`
-2. Try alternative connection strings in `server/.env`:
-   ```
-   # For Windows PostgreSQL from WSL
-   DATABASE_URL="postgresql://postgres:postgres@host.docker.internal:5432/chatapp"
-   
-   # Alternative IP approach
-   DATABASE_URL="postgresql://postgres:postgres@172.17.0.1:5432/chatapp"
-   ```
-3. Verify that PostgreSQL is configured to accept remote connections:
-   - Edit `pg_hba.conf` to allow connections from WSL
-   - Set `listen_addresses = '*'` in `postgresql.conf`
-
-### WSL Issues
-
-**Cannot connect to server from WSL**:
-- Ensure WSL has network connectivity: `ping google.com`
-- Check if Windows firewall is blocking connections
-- Try using the direct IP address instead of localhost
-
-**Slow performance in WSL**:
-- Place your project directory in the Linux filesystem, not Windows mounted path
-- Avoid working from /mnt/c/ paths for better performance
-
-### Client-side Issues
-
-**Socket.IO connection failing**:
-- Check if the server is running
-- Verify that the token is valid and correctly formatted
-- Ensure CORS is properly configured on the server
-
-## Development Guide
-
-### Adding New Features
-
-1. **Backend**:
-   - Routes: Add new endpoints in `server/routes/`
-   - Logic: Implement business logic in `server/services/`
-   - WebSockets: Add event handlers in `server/sockets/`
-
-2. **Frontend**:
-   - Components: Create React components in `src/components/`
-   - API Integration: Use Axios for HTTP requests, Socket.IO for real-time events
-
-### Code Style and Standards
-
-- Use Prettier for code formatting
-- Follow React hooks patterns for frontend state management
-- Use async/await for asynchronous operations
-- Follow RESTful API conventions for endpoints
-
-### Running Tests
-
-```bash
-# Client tests
-npm test
-
-# Server tests (if implemented)
-cd server && npm test
-```
-
-## License
-
-MIT License. See [LICENSE](LICENSE) for details. 
+See [TROUBLESHOOTING.md](docs/guides/TROUBLESHOOTING.md) for common issues and solutions.

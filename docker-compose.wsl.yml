@@ -16,24 +16,44 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   server:
     build: 
       context: ./server
       dockerfile: Dockerfile
     ports:
       - "3001:3001"
+      - "4000:4000" # WebSocket port
     volumes:
       - ./server:/app
       - /app/node_modules
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/chatapp
+      - REDIS_URL=redis://redis:6379
       - JWT_SECRET=your-secret-key-change-in-production
       - NODE_ENV=development
       - CLIENT_URL=http://localhost:3000
+      - PORT=3001
+      - WS_PORT=4000
+      - NODEMON_LEGACY_WATCH=true
     depends_on:
       postgres:
         condition: service_healthy
-    command: npm run dev
+      redis:
+        condition: service_healthy
+    command: npm run hot
 
   client:
     build:
@@ -46,9 +66,15 @@ services:
       - /app/node_modules
     environment:
       - REACT_APP_API_URL=http://localhost:3001
+      - REACT_APP_WS_URL=ws://localhost:4000
+      - FAST_REFRESH=true
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+      - WDS_SOCKET_PORT=0
     depends_on:
       - server
     command: npm start
 
 volumes:
-  postgres_data: 
+  postgres_data:
+  redis_data:

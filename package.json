@@ -15,12 +15,13 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "cross-env PORT=3000 react-scripts start",
+    "start": "cross-env PORT=3000 FAST_REFRESH=true CHOKIDAR_USEPOLLING=true WATCHPACK_POLLING=true react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "server": "cd server && npm start",
-    "dev": "concurrently \"npm run server\" \"npm start\"",
+    "server:dev": "cd server && npm run hot",
+    "dev": "concurrently \"npm run server:dev\" \"npm start\"",
     "wsl:server": "cd server && bash ./start-wsl.sh",
     "wsl:client": "bash ./start-client-wsl.sh",
     "wsl:dev": "concurrently \"npm run wsl:server\" \"npm run wsl:client\"",
@@ -29,7 +30,16 @@
     "wsl:docker:up": "wsl docker-compose -f docker-compose.wsl.yml up",
     "wsl:docker:down": "wsl docker-compose -f docker-compose.wsl.yml down",
     "wsl:docker:build": "wsl docker-compose -f docker-compose.wsl.yml build",
-    "wsl:docker:db": "wsl docker-compose -f docker-compose.wsl.yml up postgres"
+    "wsl:docker:db": "wsl docker-compose -f docker-compose.wsl.yml up postgres",
+    "wsl:docker:redis": "wsl docker-compose -f docker-compose.wsl.yml up redis",
+    "wsl:docker:dev": "wsl docker-compose -f docker-compose.wsl.yml up",
+    "db:studio": "cd server && npx prisma studio",
+    "lint": "eslint --ext .js,.jsx,.ts,.tsx src",
+    "lint:fix": "eslint --ext .js,.jsx,.ts,.tsx src --fix",
+    "deploy:railway": "railway up",
+    "deploy:railway:setup": "railway init && railway link",
+    "clean:dev": "rm -rf node_modules && cd server && rm -rf node_modules && cd ..",
+    "clean:chatappmvp": "rm -rf chatappmvp"
   },
   "eslintConfig": {
     "extends": [
